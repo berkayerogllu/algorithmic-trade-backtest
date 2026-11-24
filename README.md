@@ -28,3 +28,27 @@ exchange feed. Borsa İstanbul provides official historical data through its
 DataStore, which may require registration or purchase. Check data rights and
 adjustment conventions before redistributing or using downloaded data.
 
+## Strategy parameter search
+
+Split data chronologically before optimization and pass only the optimization
+partition to the optimizer. Keep validation for model selection checks and
+test data untouched until the final evaluation.
+
+```python
+from algorithmic_backtest.data_loader import DataLoader
+from algorithmic_backtest.optimizer import StrategyOptimizer
+from algorithmic_backtest.strategies import SMACrossoverStrategy
+
+prices = DataLoader().load_csv("data/THYAO.IS.csv")
+optimization, validation, test = DataLoader().split(prices)
+ranked = StrategyOptimizer().optimize(
+    optimization,
+    SMACrossoverStrategy,
+    {"fast_period": [5, 10, 20], "slow_period": [30, 50, 100]},
+    n_jobs=2,
+)
+```
+
+Parallel search uses Python worker processes. Define strategy classes at the
+top level of an importable module when using `n_jobs` greater than one.
+
