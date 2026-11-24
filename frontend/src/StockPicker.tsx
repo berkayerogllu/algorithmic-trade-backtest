@@ -47,7 +47,7 @@ export function StockPicker({ value, onChange }: Props) {
           setQuery(next);
           setOpen(true);
           const code = normalize(next);
-          if (/^[A-Z0-9]{1,12}$/.test(code)) onChange(`${code}.IS`);
+          if (stockSymbols.some(stock => stock.code === code)) onChange(`${code}.IS`);
         }}
         onKeyDown={event => {
           if (event.key === 'Escape') setOpen(false);
@@ -80,7 +80,7 @@ export function StockPicker({ value, onChange }: Props) {
         </button>)}
         {!results.length && !canUseCustom && <p className="picker-empty">Eşleşme bulunamadı. Hisse kodunu yazabilirsiniz.</p>}
       </div>
-      {canUseCustom && <button type="button" className="custom-symbol" onMouseDown={event => event.preventDefault()} onClick={() => choose(customCode)}>
+      {!results.length && canUseCustom && <button type="button" className="custom-symbol" onMouseDown={event => event.preventDefault()} onClick={() => choose(customCode)}>
         <span><strong>{customCode}</strong> kodunu kullan</span><span className="custom-symbol-hint">Yahoo Finance · .IS</span>
       </button>}
       <p className="picker-footnote">Listede olmayan hisseler için kodu yazıp kullanın.</p>
