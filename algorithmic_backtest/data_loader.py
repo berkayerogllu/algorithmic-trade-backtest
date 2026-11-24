@@ -36,6 +36,43 @@ class DataLoader:
             raise BacktestError("Market data cannot be empty")
         return frame
 
+    def download_yfinance(
+        self,
+        ticker: str,
+        start: str,
+        end: str | None = None,
+    ) -> pd.DataFrame:
+        """Download daily market data from Yahoo Finance (e.g. THYAO.IS)."""
+        try:
+            import yfinance as yf
+        except ImportError as exc:
+            raise BacktestError(
+                "Yahoo Finance downloads require the optional 'yfinance' package"
+            ) from exc
+
+        try:
+            frame = yf.download(
+                ticker,
+                start=start,
+                end=end,
+                interval="1d",
+                auto_adjust=True,
+                progress=False,
+            )
+        except Exception as exc:
+            raise BacktestError(f"Could not download market data for {ticker}") from exc
+
+        if frame.empty:
+            raise BacktestError(f"No market data returned for {ticker}")
+        if isinstance(frame.columns, pd.MultiIndex):
+            frame.columns = frame.columns.get_level_values(0)
+        frame.index.name = "Date"
+        frame.columns.name = None
+        missing = [column for column in self.REQUIRED_COLUMNS if column not in frame]
+        if missing:
+            raise BacktestError(f"Downloaded data is missing: {', '.join(missing)}")
+        return frame.sort_index()
+
     def split(
         self,
         data: pd.DataFrame,
