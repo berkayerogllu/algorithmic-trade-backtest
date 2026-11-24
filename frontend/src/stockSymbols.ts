@@ -1,8 +1,9 @@
-export type StockSymbol = { code: string; name: string };
+export type Market = 'BIST' | 'US';
+export type StockSymbol = { code: string; symbol: string; name: string; exchange: string; market: Market };
 
 // Frequently used BIST symbols. The API accepts any valid Yahoo Finance symbol,
 // so this searchable list is a convenience rather than a complete exchange feed.
-export const stockSymbols: StockSymbol[] = [
+const bistSymbols = [
   { code: 'THYAO', name: 'Türk Hava Yolları' },
   { code: 'ASELS', name: 'Aselsan' },
   { code: 'TUPRS', name: 'Tüpraş' },
@@ -91,4 +92,42 @@ export const stockSymbols: StockSymbol[] = [
   { code: 'BORSK', name: 'Bor Şeker' },
   { code: 'KAYSE', name: 'Kayseri Şeker' },
   { code: 'CANTE', name: 'Çan2 Termik' },
+];
+
+const usSymbols: { code: string; name: string; exchange: string }[] = [
+  { code: 'AAPL', name: 'Apple Inc.', exchange: 'NASDAQ' },
+  { code: 'MSFT', name: 'Microsoft Corporation', exchange: 'NASDAQ' },
+  { code: 'NVDA', name: 'NVIDIA Corporation', exchange: 'NASDAQ' },
+  { code: 'AMZN', name: 'Amazon.com, Inc.', exchange: 'NASDAQ' },
+  { code: 'GOOGL', name: 'Alphabet Inc. (Class A)', exchange: 'NASDAQ' },
+  { code: 'META', name: 'Meta Platforms, Inc.', exchange: 'NASDAQ' },
+  { code: 'TSLA', name: 'Tesla, Inc.', exchange: 'NASDAQ' },
+  { code: 'AVGO', name: 'Broadcom Inc.', exchange: 'NASDAQ' },
+  { code: 'BRK-B', name: 'Berkshire Hathaway Inc. (Class B)', exchange: 'NYSE' },
+  { code: 'JPM', name: 'JPMorgan Chase & Co.', exchange: 'NYSE' },
+  { code: 'LLY', name: 'Eli Lilly and Company', exchange: 'NYSE' },
+  { code: 'V', name: 'Visa Inc.', exchange: 'NYSE' },
+  { code: 'MA', name: 'Mastercard Incorporated', exchange: 'NYSE' },
+  { code: 'WMT', name: 'Walmart Inc.', exchange: 'NASDAQ' },
+  { code: 'XOM', name: 'Exxon Mobil Corporation', exchange: 'NYSE' },
+  { code: 'ORCL', name: 'Oracle Corporation', exchange: 'NYSE' },
+  { code: 'COST', name: 'Costco Wholesale Corporation', exchange: 'NASDAQ' },
+  { code: 'NFLX', name: 'Netflix, Inc.', exchange: 'NASDAQ' },
+  { code: 'AMD', name: 'Advanced Micro Devices, Inc.', exchange: 'NASDAQ' },
+  { code: 'KO', name: 'The Coca-Cola Company', exchange: 'NYSE' },
+  { code: 'JNJ', name: 'Johnson & Johnson', exchange: 'NYSE' },
+  { code: 'BAC', name: 'Bank of America Corporation', exchange: 'NYSE' },
+  { code: 'DIS', name: 'The Walt Disney Company', exchange: 'NYSE' },
+  { code: 'CRM', name: 'Salesforce, Inc.', exchange: 'NYSE' },
+  { code: 'PLTR', name: 'Palantir Technologies Inc.', exchange: 'NASDAQ' },
+  { code: 'UBER', name: 'Uber Technologies, Inc.', exchange: 'NYSE' },
+  { code: 'INTC', name: 'Intel Corporation', exchange: 'NASDAQ' },
+  { code: 'BA', name: 'The Boeing Company', exchange: 'NYSE' },
+  { code: 'PFE', name: 'Pfizer Inc.', exchange: 'NYSE' },
+  { code: 'SHOP', name: 'Shopify Inc.', exchange: 'NASDAQ' },
+];
+
+export const stockSymbols: StockSymbol[] = [
+  ...bistSymbols.map(({ code, name }) => ({ code, symbol: `${code}.IS`, name, exchange: 'Borsa İstanbul', market: 'BIST' as const })),
+  ...usSymbols.map(({ code, name, exchange }) => ({ code, symbol: code, name, exchange, market: 'US' as const })),
 ];
