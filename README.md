@@ -52,3 +52,17 @@ ranked = StrategyOptimizer().optimize(
 Parallel search uses Python worker processes. Define strategy classes at the
 top level of an importable module when using `n_jobs` greater than one.
 
+## TypeScript research interface
+
+The interface is a React and TypeScript application backed by the Python
+simulation engine. Start the API and frontend in separate terminals:
+
+```bash
+python -m pip install -e .
+python -m uvicorn algorithmic_backtest.api:app --reload
+cd frontend && npm install && npm run dev
+```
+
+Open `http://127.0.0.1:5173`. THYAO data is included; other BIST symbols are
+loaded from Yahoo Finance when the backtest runs.
+
