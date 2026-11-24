@@ -52,7 +52,28 @@ ranked = StrategyOptimizer().optimize(
 Parallel search uses Python worker processes. Define strategy classes at the
 top level of an importable module when using `n_jobs` greater than one.
 
-## TypeScript research interface
+## Yerel backtest uygulaması
+
+İlk kurulum için Python 3.11+ ile Node.js ve npm gerekir. Repo kökünde
+Python bağımlılıklarını kurun:
+
+```bash
+python -m pip install -e .
+```
+
+Uygulamayı tek terminalden başlatın:
+
+```bash
+python -m algorithmic_backtest.local_app
+```
+
+[Yerel uygulamayı](http://127.0.0.1:8765/) tarayıcıda açın. Hisse kodunu,
+tarih aralığını ve stratejiyi seçip simülasyonu çalıştırın. Sonuç ekranında
+portföy, hisse fiyatı, performans metrikleri ve işlem günlüğü yer alır.
+THYAO verisi repo içinde bulunur. Diğer BIST hisseleri Yahoo Finance üzerinden
+indirilir. Portu değiştirmek için `--port` kullanın.
+
+### Arayüz geliştirme
 
 The interface is a React and TypeScript application backed by the Python
 simulation engine. Start the API and frontend in separate terminals:
