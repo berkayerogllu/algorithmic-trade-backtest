@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
+import re
+from typing import Optional
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException
@@ -32,6 +34,9 @@ class BacktestRequest(BaseModel):
     initial_cash: float = Field(gt=0)
     commission_rate: float = Field(ge=0, lt=1)
     risk_enabled: bool = True
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    parameters: dict[str, int] = Field(default_factory=dict)
 
 
 @app.get("/api/health")
@@ -41,16 +46,38 @@ def health() -> dict[str, str]:
 
 @app.post("/api/backtest")
 def run_backtest(request: BacktestRequest) -> dict:
-    symbol = request.symbol.upper()
+    symbol = request.symbol.strip().upper()
+    if not re.fullmatch(r"[A-Z0-9]{1,12}(\.IS)?", symbol):
+        raise HTTPException(422, "Geçerli bir BIST hisse kodu girin.")
     if not symbol.endswith(".IS"):
         symbol = f"{symbol}.IS"
 
+    start = request.start_date or date(2023, 1, 1)
+    end = request.end_date
+    if end and (end < start or end > date.today()):
+        raise HTTPException(422, "Bitiş tarihi başlangıçtan önce veya bugünden sonra olamaz.")
+
     try:
+        strategy = _strategy_for(request.strategy, request.parameters)
         if symbol == "THYAO.IS":
             data = DataLoader().load_csv(PROJECT_ROOT / "data" / "THYAO.IS.csv")
+            source = "Yahoo Finance · Yerel THYAO arşivi"
         else:
-            data = DataLoader().download_yfinance(symbol, start="2023-01-01")
-        strategy = _strategy_for(request.strategy)
+            download_end = (end + timedelta(days=1)).isoformat() if end else None
+            data = DataLoader().download_yfinance(symbol, start.isoformat(), download_end)
+            source = "Yahoo Finance · İndirilen tarihsel veri"
+        dates = pd.DatetimeIndex(data.index).date
+        data = data[dates >= start]
+        if end:
+            data = data[pd.DatetimeIndex(data.index).date <= end]
+        minimum = {
+            "SMA Crossover": lambda: strategy.slow_period + 1,
+            "RSI": lambda: strategy.period + 2,
+            "MACD": lambda: strategy.slow_period + strategy.signal_period,
+            "Buy & Hold": lambda: 2,
+        }[request.strategy]()
+        if len(data) < minimum:
+            raise ValueError(f"Bu strateji için en az {minimum} işlem günü gerekli. Tarih aralığını genişletin.")
         risk = RiskManager() if request.risk_enabled else None
         results = BacktestEngine(request.initial_cash, request.commission_rate, risk).run(data, strategy)
         metrics = PerformanceAnalyzer().analyze(results)
@@ -83,6 +110,8 @@ def run_backtest(request: BacktestRequest) -> dict:
     return {
         "symbol": symbol,
         "strategy": request.strategy,
+        "source": source,
+        "parameters": request.parameters,
         "period": f"{date.fromisoformat(points[0]['date']).strftime('%d.%m.%Y')} — {date.fromisoformat(points[-1]['date']).strftime('%d.%m.%Y')}",
         "metrics": metrics,
         "points": points,
@@ -90,7 +119,7 @@ def run_backtest(request: BacktestRequest) -> dict:
     }
 
 
-def _strategy_for(name: str):
+def _strategy_for(name: str, parameters: dict[str, int]):
     strategies = {
         "SMA Crossover": SMACrossoverStrategy,
         "RSI": RSIStrategy,
@@ -98,6 +127,6 @@ def _strategy_for(name: str):
         "Buy & Hold": BuyAndHoldStrategy,
     }
     try:
-        return strategies[name]()
-    except KeyError as exc:
-        raise ValueError(f"Desteklenmeyen strateji: {name}") from exc
+        return strategies[name](**parameters)
+    except (KeyError, TypeError) as exc:
+        raise ValueError("Strateji veya parametreleri geçersiz.") from exc

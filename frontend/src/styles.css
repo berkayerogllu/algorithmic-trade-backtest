@@ -31,6 +31,10 @@ button, input, select { font: inherit; }
 .input-wrap, .select-wrap { display: flex; align-items: center; gap: 8px; }
 .field input, .field select { width: 100%; min-width: 0; min-height: 44px; padding: 8px 10px; color: var(--ink); background: var(--paper); border: 1px solid #919d92; border-radius: 6px; font-weight: 400; font-size: 1rem; }
 .suffix { color: var(--muted); }
+.strategy-settings { margin-block: 16px; border-block: 1px solid var(--line); }
+.strategy-settings summary { cursor: pointer; padding-block: 12px; font-weight: 600; }
+.strategy-settings p { margin-bottom: 12px; }
+.legend[hidden] { display: none; }
 .panel-footer, .results-heading, .chart-head, .chart-foot, .app-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .risk-toggle { display: flex; align-items: center; gap: 8px; min-height: 44px; }
 .risk-toggle input { accent-color: var(--accent); width: 18px; height: 18px; flex: none; }

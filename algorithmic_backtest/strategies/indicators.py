@@ -59,9 +59,9 @@ class RSIStrategy(BaseStrategy):
 
     def generate_signals(self, data: pd.DataFrame) -> pd.Series:
         rsi = self.rsi(data)
-        signals = pd.Series(0, index=data.index, dtype="int8")
-        signals.loc[rsi < self.oversold] = 1
-        return signals.rename("signal")
+        entries = rsi < self.oversold
+        exits = rsi > self.overbought
+        return entries.where(entries | exits).ffill().eq(True).astype("int8").rename("signal")
 
 
 class MACDStrategy(BaseStrategy):

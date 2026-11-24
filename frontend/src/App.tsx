@@ -8,15 +8,31 @@ import { Download } from 'lucide-react';
 type Point = { date: string; price: number; equity: number; benchmark: number };
 type Metrics = { total_return: number; sharpe_ratio: number; max_drawdown: number; win_rate: number; closed_trades: number };
 type Trade = { entry_date: string; exit_date: string; entry_price: number; exit_price: number; pnl: number; exit_reason: string };
-type BacktestResponse = { points: Point[]; trades: Trade[]; metrics: Metrics; strategy: string; symbol: string; period: string };
+type BacktestResponse = { points: Point[]; trades: Trade[]; metrics: Metrics; strategy: string; symbol: string; period: string; source: string; parameters: Record<string, number> };
 
 const strategies = ['SMA Crossover', 'RSI', 'MACD', 'Buy & Hold'];
+const presets: Record<string, [string, string, number][]> = {
+  'SMA Crossover': [['fast_period', 'Kısa ortalama (gün)', 20], ['slow_period', 'Uzun ortalama (gün)', 50]],
+  RSI: [['period', 'RSI dönemi (gün)', 14], ['oversold', 'Alım eşiği', 30], ['overbought', 'Çıkış eşiği', 70]],
+  MACD: [['fast_period', 'Hızlı EMA (gün)', 12], ['slow_period', 'Yavaş EMA (gün)', 26], ['signal_period', 'Sinyal dönemi (gün)', 9]],
+  'Buy & Hold': [],
+};
+const descriptions: Record<string, string> = {
+  'SMA Crossover': 'Kısa ortalama uzun ortalamanın üzerindeyken pozisyonda kalır.',
+  RSI: 'RSI alım eşiğinin altına indiğinde girer, çıkış eşiğinin üzerine çıktığında pozisyonu kapatır.',
+  MACD: 'MACD sinyal çizgisinin üzerindeyken pozisyonda kalır.',
+  'Buy & Hold': 'Pozisyon açar ve dönem boyunca taşır. Risk kuralları açıksa erken çıkabilir.',
+};
 const formatTRY = (n: number) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(n);
 const formatPercent = (n: number) => `${n >= 0 ? '+' : ''}${(n * 100).toFixed(2)}%`;
 
 function App() {
   const [strategy, setStrategy] = useState(strategies[0]);
   const [symbol, setSymbol] = useState('THYAO.IS');
+  const [start, setStart] = useState('2023-01-01');
+  const [end, setEnd] = useState('');
+  const [parameters, setParameters] = useState<Record<string, string>>({});
+  const [showPrices, setShowPrices] = useState(false);
   const [capital, setCapital] = useState('100000');
   const [commission, setCommission] = useState('0.1');
   const [riskEnabled, setRiskEnabled] = useState(true);
@@ -38,9 +54,12 @@ function App() {
     try {
       const response = await fetch('/api/backtest', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol, strategy, initial_cash: Number(capital), commission_rate: Number(commission) / 100, risk_enabled: riskEnabled }),
+        body: JSON.stringify({ symbol: symbol.trim(), strategy, start_date: start, end_date: end || null, parameters: Object.fromEntries(presets[strategy].map(([key, , fallback]) => [key, Number(parameters[key] ?? fallback)])), initial_cash: Number(capital), commission_rate: Number(commission) / 100, risk_enabled: riskEnabled }),
       });
-      if (!response.ok) throw new Error((await response.json()).detail ?? 'Backtest çalıştırılamadı.');
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(typeof body?.detail === 'string' ? body.detail : 'Simülasyon çalıştırılamadı. Ayarları ve sunucu bağlantısını kontrol edin.');
+      }
       setResult(await response.json());
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Sunucuya ulaşılamadı. Python API sunucusunu başlatın.');
@@ -62,11 +81,28 @@ function App() {
         <form className="run-panel" onSubmit={event => { event.preventDefault(); void runBacktest(); }}>
           <h2>Simülasyon ayarları</h2>
           <div className="form-grid">
-            <label className="field"><span>Hisse kodu</span><div className="input-wrap ticker-input"><input value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase())} aria-label="Hisse senedi sembolü" /></div></label>
-            <label className="field"><span>Strateji</span><div className="select-wrap"><select value={strategy} onChange={e => setStrategy(e.target.value)} aria-label="Strateji seç"><option>SMA Crossover</option><option>RSI</option><option>MACD</option><option>Buy &amp; Hold</option></select></div></label>
+            <label className="field"><span>Hisse kodu</span><div className="input-wrap ticker-input"><input list="bist-symbols" required maxLength={20} value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase())} aria-label="Hisse senedi sembolü" /><datalist id="bist-symbols">{['THYAO', 'ASELS', 'TUPRS', 'GARAN', 'AKBNK', 'BIMAS', 'KCHOL', 'EREGL'].map(code => <option key={code} value={code} />)}</datalist></div></label>
+            <label className="field"><span>Strateji</span><div className="select-wrap"><select value={strategy} onChange={e => { setStrategy(e.target.value); setParameters({}); }} aria-label="Strateji seç"><option>SMA Crossover</option><option>RSI</option><option>MACD</option><option>Buy &amp; Hold</option></select></div></label>
             <label className="field"><span>Başlangıç sermayesi</span><div className="input-wrap"><input value={capital} onChange={e => setCapital(e.target.value)} inputMode="numeric" aria-label="Başlangıç sermayesi" /><span className="suffix">₺</span></div></label>
             <label className="field"><span>Komisyon</span><div className="input-wrap"><input value={commission} onChange={e => setCommission(e.target.value)} inputMode="decimal" aria-label="Komisyon oranı" /><span className="suffix">%</span></div></label>
           </div>
+          <div className="form-grid">
+            <label className="field">Başlangıç tarihi<input type="date" required value={start} onChange={event => setStart(event.target.value)} /></label>
+            <label className="field">Bitiş tarihi (isteğe bağlı)<input type="date" min={start} value={end} onChange={event => setEnd(event.target.value)} /></label>
+          </div>
+          <details className="strategy-settings">
+            <summary>Strateji kuralları ve parametreleri</summary>
+            <p>{descriptions[strategy]}</p>
+            {presets[strategy].length > 0 && <div className="form-grid">
+              {presets[strategy].map(([key, label, fallback]) => (
+                <label className="field" key={key}>{label}
+                  <input type="number" min={key.endsWith('sold') || key === 'overbought' ? 0 : 1} required
+                    value={parameters[key] ?? fallback}
+                    onChange={event => setParameters({ ...parameters, [key]: event.target.value })} />
+                </label>
+              ))}
+            </div>}
+          </details>
           <div className="panel-footer">
             <label className="risk-toggle">
               <input type="checkbox" checked={riskEnabled} onChange={event => setRiskEnabled(event.target.checked)} />
@@ -88,7 +124,7 @@ function App() {
           <MetricCard label="Kazanma oranı" value={metrics ? formatPercent(metrics.win_rate) : '—'} detail={metrics ? `${metrics.closed_trades} kapanan işlem` : 'Kapanan işlemlere göre'} />
         </section>
 
-        <section className="chart-card"><div className="chart-head"><div><h2>Portföy performansı</h2><p>Strateji portföyü ve al-tut karşılaştırması</p></div><div className="legend"><span><i className="legend-strategy" /> Strateji</span><span><i className="legend-benchmark" /> Al-tut</span></div></div><div className="chart-wrap">{chartData.length ? <ResponsiveContainer width="100%" height="100%"><ComposedChart data={chartData} margin={{ top: 16, right: 10, bottom: 0, left: 2 }}><defs><linearGradient id="equityFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#176b56" stopOpacity={0.17} /><stop offset="100%" stopColor="#176b56" stopOpacity={0} /></linearGradient></defs><CartesianGrid stroke="#dedfd7" vertical={false} /><XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fill: '#56635e', fontSize: 11 }} minTickGap={44} /><YAxis tickLine={false} axisLine={false} tick={{ fill: '#56635e', fontSize: 11 }} tickFormatter={v => `${Math.round(v / 1000)}k`} width={44} /><Tooltip contentStyle={{ background: '#fffdf8', border: '1px solid #dedfd7', borderRadius: 8, color: '#202b27' }} formatter={(v: number) => formatTRY(v)} /><Area type="monotone" dataKey="equity" stroke="#176b56" strokeWidth={2} fill="url(#equityFill)" name="Strateji" /><Line type="monotone" dataKey="benchmark" stroke="#73808d" strokeWidth={1.5} strokeDasharray="5 5" dot={false} name="Al-tut" /></ComposedChart></ResponsiveContainer> : <p className="empty-chart">Simülasyonu çalıştırınca strateji ve al-tut sonuçları burada görünür.</p>}</div><div className="chart-foot"><span><span className="live-dot" /> Günlük kapanış fiyatları</span><span>Kaynak: Yahoo Finance · Gecikmeli piyasa verisi</span></div></section>
+        <section className="chart-card"><div className="chart-head"><div><h2>Portföy performansı</h2><p>Düzeltilmiş günlük kapanışlar üzerinden</p></div>{result && <button type="button" className="export-button" onClick={() => setShowPrices(!showPrices)}>{showPrices ? 'Portföyü göster' : 'Hisse fiyatını göster'}</button>}<div className="legend" hidden={showPrices}><span><i className="legend-strategy" /> Strateji</span><span><i className="legend-benchmark" /> Al-tut</span></div></div><div className="chart-wrap">{chartData.length ? <ResponsiveContainer width="100%" height="100%"><ComposedChart data={chartData} margin={{ top: 16, right: 10, bottom: 0, left: 2 }}><defs><linearGradient id="equityFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#176b56" stopOpacity={0.17} /><stop offset="100%" stopColor="#176b56" stopOpacity={0} /></linearGradient></defs><CartesianGrid stroke="#dedfd7" vertical={false} /><XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fill: '#56635e', fontSize: 11 }} minTickGap={44} /><YAxis tickLine={false} axisLine={false} tick={{ fill: '#56635e', fontSize: 11 }} tickFormatter={v => new Intl.NumberFormat('tr-TR', { notation: 'compact' }).format(v)} width={44} /><Tooltip contentStyle={{ background: '#fffdf8', border: '1px solid #dedfd7', borderRadius: 8, color: '#202b27' }} formatter={(v: number) => formatTRY(v)} />{showPrices ? <Line dataKey="price" name="Kapanış" stroke="#176b56" dot={false} /> : <Area type="monotone" dataKey="equity" stroke="#176b56" strokeWidth={2} fill="url(#equityFill)" name="Strateji" />}{!showPrices && <Line type="monotone" dataKey="benchmark" stroke="#73808d" strokeWidth={1.5} strokeDasharray="5 5" dot={false} name="Al-tut" />}</ComposedChart></ResponsiveContainer> : <p className="empty-chart">Simülasyonu çalıştırınca strateji ve al-tut sonuçları burada görünür.</p>}</div><div className="chart-foot"><span><span className="live-dot" /> Günlük kapanış fiyatları</span><span>{result?.source ?? 'Kaynak: Yahoo Finance'}</span></div></section>
 
         <section className="lower-grid"><div className="data-card"><div className="card-heading"><div><h2>İşlem günlüğü</h2><p>{result ? `${closedTrades.length} kapanmış işlem` : 'Gerçekleşen alım ve satımlar'}</p></div></div><div className="table-scroll" id="trade-table"><table><thead><tr><th>Giriş</th><th>Çıkış</th><th>Kâr / zarar</th><th>Çıkış nedeni</th></tr></thead><tbody>{closedTrades.length ? closedTrades.slice().reverse().map((trade, i) => <tr key={`${trade.entry_date}-${i}`}><td>{trade.entry_date} · {formatTRY(trade.entry_price)}</td><td>{trade.exit_date} · {formatTRY(trade.exit_price)}</td><td className={trade.pnl >= 0 ? 'pnl-positive' : 'pnl-negative'}>{formatTRY(trade.pnl)}</td><td><span className={`trade-pill ${trade.exit_reason === 'signal' ? 'buy' : 'sell'}`}>{trade.exit_reason === 'signal' ? 'Sinyal' : trade.exit_reason === 'stop_loss' ? 'Stop-loss' : 'Take-profit'}</span></td></tr>) : <tr><td colSpan={4} className="empty-row">{result ? 'Bu dönemde kapanmış işlem yok.' : 'Backtest sonrası işlem kayıtları listelenir.'}</td></tr>}</tbody></table></div></div>
         </section>
