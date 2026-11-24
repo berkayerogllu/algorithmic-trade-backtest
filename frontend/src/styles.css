@@ -30,12 +30,36 @@ button, input, select { font: inherit; }
 .field { display: grid; gap: 8px; min-width: 0; font-size: .875rem; font-weight: 600; }
 .input-wrap, .select-wrap { display: flex; align-items: center; gap: 8px; }
 .field input, .field select { width: 100%; min-width: 0; min-height: 44px; padding: 8px 10px; color: var(--ink); background: var(--paper); border: 1px solid #919d92; border-radius: 6px; font-weight: 400; font-size: 1rem; }
+.stock-field { position: relative; z-index: 3; }
+.stock-picker { position: relative; display: grid; gap: 7px; font-weight: 400; }
+.stock-picker-control { display: flex; align-items: center; gap: 8px; min-height: 44px; padding-inline: 11px 4px; border: 1px solid #919d92; border-radius: 6px; color: var(--muted); background: var(--paper); }
+.stock-picker-control:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; border-color: var(--accent); }
+.stock-picker-control input { min-width: 0; width: 100%; min-height: 40px; padding: 7px 0; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: .95rem; }
+.stock-picker-control input:focus-visible { outline: 0; }
+.stock-picker-control input::placeholder { color: #69766f; }
+.picker-toggle { display: grid; place-items: center; flex: none; width: 36px; min-height: 34px; padding: 0; border: 0; color: var(--muted); background: transparent; }
+.picker-toggle:hover { background: #edf1e8; }
+.stock-picker-menu { position: absolute; top: calc(100% + 5px); inset-inline: 0; z-index: 10; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); box-shadow: 0 12px 28px #202b2720; }
+.picker-caption, .picker-footnote { padding: 9px 12px; color: var(--muted); font-size: .75rem; }
+.picker-caption { border-bottom: 1px solid #e8e9e1; font-weight: 650; }
+.stock-picker-options { max-height: 260px; overflow-y: auto; padding: 4px; }
+.stock-option { display: grid; grid-template-columns: 62px minmax(0, 1fr) 16px; align-items: center; gap: 8px; width: 100%; min-height: 38px; padding: 7px 8px; border: 0; border-radius: 5px; text-align: left; background: transparent; color: var(--ink); }
+.stock-option:hover, .stock-option[aria-selected="true"] { background: #edf1e8; }
+.stock-option-code { font-size: .84rem; font-weight: 700; }
+.stock-option-name { overflow: hidden; color: var(--muted); font-size: .83rem; text-overflow: ellipsis; white-space: nowrap; }
+.picker-empty { padding: 11px 8px; font-size: .82rem; }
+.custom-symbol { display: flex; width: calc(100% - 8px); justify-content: space-between; gap: 8px; margin: 4px; padding: 9px 8px; border: 1px dashed #9ba89f; background: #f4f5ed; color: var(--ink); text-align: left; }
+.custom-symbol-hint { flex: none; color: var(--muted); font-size: .76rem; }
+.picker-footnote { border-top: 1px solid #e8e9e1; }
+.picker-selected { overflow: hidden; color: var(--muted); font-size: .74rem; text-overflow: ellipsis; white-space: nowrap; }
+.picker-selected strong { color: var(--ink); font-weight: 600; }
 .suffix { color: var(--muted); }
 .mode-tabs { display:flex; gap:20px; margin:12px 0 20px; border-bottom:1px solid var(--line); }
 .mode-tabs button { border:0; border-radius:0; background:transparent; color:var(--muted); padding:10px 2px; min-height:42px; }
 .mode-tabs button.selected { color:var(--accent); border-bottom:2px solid var(--accent); font-weight:650; }
 .forecast-intro { max-width:70ch; margin-top:10px; }
 .forecast-controls { margin-top:22px; }
+.forecast-controls .stock-field { z-index: 4; }
 .forecast-controls input,.forecast-controls select { min-height:44px; padding:8px 10px; border:1px solid #919d92; border-radius:6px; background:var(--paper); color:var(--ink); font-size:1rem; }
 .forecast-metrics .metric-card { min-width:0; }
 .forecast-metrics .metric-value { overflow-wrap:anywhere; font-size:clamp(1.1rem,2.3vw,1.65rem); }

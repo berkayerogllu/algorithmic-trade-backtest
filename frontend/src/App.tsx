@@ -4,6 +4,7 @@ import {
   Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { Download } from 'lucide-react';
+import { StockPicker } from './StockPicker';
 
 type Point = { date: string; price: number; equity: number; benchmark: number };
 type Metrics = { total_return: number; sharpe_ratio: number; max_drawdown: number; win_rate: number; closed_trades: number };
@@ -107,7 +108,7 @@ function App() {
         <form className="run-panel" onSubmit={event => { event.preventDefault(); void runBacktest(); }}>
           <h2>Simülasyon ayarları</h2>
           <div className="form-grid">
-            <label className="field"><span>Hisse kodu</span><div className="input-wrap ticker-input"><input list="bist-symbols" required maxLength={20} value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase())} aria-label="Hisse senedi sembolü" /><datalist id="bist-symbols">{['THYAO', 'ASELS', 'TUPRS', 'GARAN', 'AKBNK', 'BIMAS', 'KCHOL', 'EREGL'].map(code => <option key={code} value={code} />)}</datalist></div></label>
+            <label className="field stock-field"><span>Hisse seçimi</span><StockPicker value={symbol} onChange={setSymbol} /></label>
             <label className="field"><span>Strateji</span><div className="select-wrap"><select value={strategy} onChange={e => { setStrategy(e.target.value); setParameters({}); }} aria-label="Strateji seç"><option>SMA Crossover</option><option>RSI</option><option>MACD</option><option>Buy &amp; Hold</option></select></div></label>
             <label className="field"><span>Başlangıç sermayesi</span><div className="input-wrap"><input value={capital} onChange={e => setCapital(e.target.value)} inputMode="numeric" aria-label="Başlangıç sermayesi" /><span className="suffix">₺</span></div></label>
             <label className="field"><span>Komisyon</span><div className="input-wrap"><input value={commission} onChange={e => setCommission(e.target.value)} inputMode="decimal" aria-label="Komisyon oranı" /><span className="suffix">%</span></div></label>
@@ -160,7 +161,7 @@ function App() {
             <h2>Geçmiş veriden tahmin</h2>
             <p className="forecast-intro">Geçmiş fiyat, trend, oynaklık ve hacim özellikleriyle ileri dönem getirisini tahmin eder. Model, son dönem verisinde kronolojik olarak doğrulanır.</p>
             <div className="form-grid forecast-controls">
-              <label className="field">Hisse kodu<input list="forecast-symbols" required maxLength={20} value={symbol} onChange={event => setSymbol(event.target.value.toUpperCase())} /><datalist id="forecast-symbols">{['THYAO','ASELS','TUPRS','GARAN','AKBNK','BIMAS','KCHOL','EREGL'].map(code => <option key={code} value={code} />)}</datalist></label>
+              <label className="field stock-field">Hisse seçimi<StockPicker value={symbol} onChange={setSymbol} /></label>
               <label className="field">Veri başlangıcı<input type="date" required value={start} onChange={event => setStart(event.target.value)} /></label>
               <label className="field">Veri bitişi<input type="date" min={start} value={end} onChange={event => setEnd(event.target.value)} /></label>
               <label className="field">Tahmin ufku<select value={horizon} onChange={event => setHorizon(Number(event.target.value))}><option value={1}>1 işlem günü</option><option value={5}>5 işlem günü</option><option value={20}>20 işlem günü</option></select></label>
