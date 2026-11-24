@@ -12,6 +12,7 @@ class Trade:
     entry_price: float
     exit_price: float
     pnl: float
+    exit_reason: str = "signal"
 
 
 class Portfolio:
@@ -31,19 +32,21 @@ class Portfolio:
         self.entry_cost = 0.0
         self.trades = []
 
-    def buy(self, price: float, date: object) -> None:
+    def buy(self, price: float, date: object, allocation_fraction: float = 1.0) -> None:
         if self.quantity > 0:
             return
         if price <= 0:
             raise ValueError("price must be positive")
-        quantity = self.cash / (price * (1 + self.commission_rate))
+        if not 0 < allocation_fraction <= 1:
+            raise ValueError("allocation_fraction must be in (0, 1]")
+        quantity = self.cash * allocation_fraction / (price * (1 + self.commission_rate))
         self.entry_cost = quantity * price * (1 + self.commission_rate)
         self.cash -= self.entry_cost
         self.quantity = quantity
         self.entry_price = price
         self.entry_date = date
 
-    def sell(self, price: float, date: object) -> None:
+    def sell(self, price: float, date: object, exit_reason: str = "signal") -> None:
         if self.quantity == 0:
             return
         if price <= 0:
@@ -59,6 +62,7 @@ class Portfolio:
                 entry_price=self.entry_price,
                 exit_price=price,
                 pnl=pnl,
+                exit_reason=exit_reason,
             )
         )
         self.quantity = 0.0
