@@ -9,6 +9,7 @@ type Point = { date: string; price: number; equity: number; benchmark: number };
 type Metrics = { total_return: number; sharpe_ratio: number; max_drawdown: number; win_rate: number; closed_trades: number };
 type Trade = { entry_date: string; exit_date: string; entry_price: number; exit_price: number; pnl: number; exit_reason: string };
 type BacktestResponse = { points: Point[]; trades: Trade[]; metrics: Metrics; strategy: string; symbol: string; period: string; source: string; parameters: Record<string, number> };
+type ForecastResponse = { symbol: string; source: string; as_of: string; last_close: number; predicted_return: number; predicted_close: number; lower_close: number; upper_close: number; horizon: number; validation_mae_pct: number; baseline_mae_pct: number; directional_accuracy: number; validation_samples: number; beats_baseline: boolean; history: { date: string; close: number }[] };
 
 const strategies = ['SMA Crossover', 'RSI', 'MACD', 'Buy & Hold'];
 const presets: Record<string, [string, string, number][]> = {
@@ -28,6 +29,8 @@ const formatPercent = (n: number) => `${n >= 0 ? '+' : ''}${(n * 100).toFixed(2)
 
 function App() {
   const [strategy, setStrategy] = useState(strategies[0]);
+  const [mode, setMode] = useState<'backtest' | 'forecast'>('backtest');
+  const [horizon, setHorizon] = useState(5);
   const [symbol, setSymbol] = useState('THYAO.IS');
   const [start, setStart] = useState('2023-01-01');
   const [end, setEnd] = useState('');
@@ -40,6 +43,7 @@ function App() {
   const [apiOnline, setApiOnline] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<BacktestResponse | null>(null);
+  const [forecast, setForecast] = useState<ForecastResponse | null>(null);
 
   const chartData = useMemo(() => result?.points ?? [], [result]);
   const closedTrades = result?.trades ?? [];
@@ -66,6 +70,21 @@ function App() {
     } finally { setBusy(false); }
   };
 
+  const runForecast = async () => {
+    setBusy(true); setError(''); setForecast(null);
+    try {
+      const response = await fetch('/api/forecast', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol: symbol.trim(), horizon, start_date: start, end_date: end || null }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(typeof body?.detail === 'string' ? body.detail : 'Tahmin üretilemedi. Hisse kodunu ve veri aralığını kontrol edin.');
+      setForecast(body);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Tahmin sunucusuna ulaşılamadı.');
+    } finally { setBusy(false); }
+  };
+
   const metrics = result?.metrics;
   return <div className="app-shell">
     <header className="topbar">
@@ -75,8 +94,15 @@ function App() {
     <main id="terminal" className="content">
         <header className="page-heading">
           <h1>BIST strateji testi</h1>
-          <p>Bir hisse ve strateji seçerek geçmiş fiyatlar üzerinden portföyü simüle edin.</p>
+          <p>Hisselerin geçmiş verisini inceleyin, stratejileri test edin ve tahmin modelini ölçün.</p>
         </header>
+
+        <div className="mode-tabs" role="tablist" aria-label="Analiz türü">
+          <button type="button" role="tab" aria-selected={mode === 'backtest'} className={mode === 'backtest' ? 'selected' : ''} onClick={() => { setMode('backtest'); setError(''); }}>Geriye dönük test</button>
+          <button type="button" role="tab" aria-selected={mode === 'forecast'} className={mode === 'forecast' ? 'selected' : ''} onClick={() => { setMode('forecast'); setError(''); }}>Tahmin araştırması</button>
+        </div>
+
+        {mode === 'backtest' && <>
 
         <form className="run-panel" onSubmit={event => { event.preventDefault(); void runBacktest(); }}>
           <h2>Simülasyon ayarları</h2>
@@ -128,7 +154,34 @@ function App() {
 
         <section className="lower-grid"><div className="data-card"><div className="card-heading"><div><h2>İşlem günlüğü</h2><p>{result ? `${closedTrades.length} kapanmış işlem` : 'Gerçekleşen alım ve satımlar'}</p></div></div><div className="table-scroll" id="trade-table"><table><thead><tr><th>Giriş</th><th>Çıkış</th><th>Kâr / zarar</th><th>Çıkış nedeni</th></tr></thead><tbody>{closedTrades.length ? closedTrades.slice().reverse().map((trade, i) => <tr key={`${trade.entry_date}-${i}`}><td>{trade.entry_date} · {formatTRY(trade.entry_price)}</td><td>{trade.exit_date} · {formatTRY(trade.exit_price)}</td><td className={trade.pnl >= 0 ? 'pnl-positive' : 'pnl-negative'}>{formatTRY(trade.pnl)}</td><td><span className={`trade-pill ${trade.exit_reason === 'signal' ? 'buy' : 'sell'}`}>{trade.exit_reason === 'signal' ? 'Sinyal' : trade.exit_reason === 'stop_loss' ? 'Stop-loss' : 'Take-profit'}</span></td></tr>) : <tr><td colSpan={4} className="empty-row">{result ? 'Bu dönemde kapanmış işlem yok.' : 'Backtest sonrası işlem kayıtları listelenir.'}</td></tr>}</tbody></table></div></div>
         </section>
-        <footer className="app-footer"><span>piyasa.lab <span>·</span> Akademik simülasyon aracı</span><span>Gerçek emir gönderilmez</span></footer>
+        </>}
+        {mode === 'forecast' && <>
+          <section className="run-panel">
+            <h2>Geçmiş veriden tahmin</h2>
+            <p className="forecast-intro">Geçmiş fiyat, trend, oynaklık ve hacim özellikleriyle ileri dönem getirisini tahmin eder. Model, son dönem verisinde kronolojik olarak doğrulanır.</p>
+            <div className="form-grid forecast-controls">
+              <label className="field">Hisse kodu<input list="forecast-symbols" required maxLength={20} value={symbol} onChange={event => setSymbol(event.target.value.toUpperCase())} /><datalist id="forecast-symbols">{['THYAO','ASELS','TUPRS','GARAN','AKBNK','BIMAS','KCHOL','EREGL'].map(code => <option key={code} value={code} />)}</datalist></label>
+              <label className="field">Veri başlangıcı<input type="date" required value={start} onChange={event => setStart(event.target.value)} /></label>
+              <label className="field">Veri bitişi<input type="date" min={start} value={end} onChange={event => setEnd(event.target.value)} /></label>
+              <label className="field">Tahmin ufku<select value={horizon} onChange={event => setHorizon(Number(event.target.value))}><option value={1}>1 işlem günü</option><option value={5}>5 işlem günü</option><option value={20}>20 işlem günü</option></select></label>
+            </div>
+            <button className="run-button" onClick={runForecast} disabled={busy || !symbol.trim()}>{busy ? 'Geçmiş veriler inceleniyor…' : 'Tahmini hesapla'}</button>
+            {error && <div className="error-message" role="alert">{error}</div>}
+          </section>
+          {forecast ? <>
+            <div className="results-heading"><div><h2>{forecast.symbol} tahmin özeti</h2><p>{forecast.as_of} kapanışı · {forecast.source} · {forecast.horizon} işlem günlük ufuk</p></div></div>
+            <section className="metric-grid forecast-metrics">
+              <MetricCard label="MODEL TAHMİNİ" value={formatTRY(forecast.predicted_close)} detail={`${formatPercent(forecast.predicted_return)} beklenen değişim`} />
+              <MetricCard label="GEÇMİŞ HATA ARALIĞI" value={`${formatTRY(forecast.lower_close)} – ${formatTRY(forecast.upper_close)}`} detail="Doğrulama hatalarının %90 yüzdeliği" />
+              <MetricCard label="YÖN DOĞRULUĞU" value={formatPercent(forecast.directional_accuracy)} detail={`${forecast.validation_samples} ayrılmış doğrulama örneği`} />
+              <MetricCard label="TABAN ÇİZGİSİ" value={forecast.beats_baseline ? 'Model daha düşük hata' : 'Basit tahmin daha düşük hata'} detail={`Model MAE ${forecast.validation_mae_pct.toFixed(2)}% · taban ${forecast.baseline_mae_pct.toFixed(2)}%`} />
+            </section>
+            {!forecast.beats_baseline && <p className="forecast-warning" role="status">Bu dönemde model, değişim yok varsayımından daha düşük hata üretmedi. Tahmini temkinli yorumlayın.</p>}
+            <section className="chart-card"><div className="chart-head"><div><h2>Fiyat geçmişi ve model tahmini</h2><p>Doğrulama verisi model eğitiminde kullanılmadı</p></div></div><div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={[...forecast.history.map(point => ({ date: point.date, close: point.close })), { date: `+${forecast.horizon} işlem günü`, forecast: forecast.predicted_close, lower: forecast.lower_close, upper: forecast.upper_close }]} margin={{ top: 16, right: 10, bottom: 0, left: 2 }}><CartesianGrid stroke="#dedfd7" vertical={false} /><XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fill: '#56635e', fontSize: 11 }} minTickGap={44} /><YAxis tickLine={false} axisLine={false} tick={{ fill: '#56635e', fontSize: 11 }} tickFormatter={value => formatTRY(value)} width={74} domain={['auto','auto']} /><Tooltip formatter={(value: number) => formatTRY(value)} /><Line dataKey="close" name="Kapanış" stroke="#176b56" dot={false} connectNulls /><Line dataKey="forecast" name="Model tahmini" stroke="#bf713a" strokeWidth={2} strokeDasharray="5 4" /><Line dataKey="lower" name="Alt hata sınırı" stroke="#bf713a" strokeDasharray="2 4" dot={false} /><Line dataKey="upper" name="Üst hata sınırı" stroke="#bf713a" strokeDasharray="2 4" dot={false} /></ComposedChart></ResponsiveContainer></div><div className="chart-foot"><span>{forecast.as_of} son gözlem</span><span>{forecast.horizon} işlem günü ileri tahmin · {forecast.source}</span></div></section>
+            <p className="forecast-note">Tahmin geçmiş örüntülerden üretilen istatistiksel bir tahmindir. Hata aralığı geçmiş doğrulama hatalarını özetler, gelecekteki sonucu garanti etmez.</p>
+          </> : <p className="forecast-empty">Bir BIST hisse kodu ve tahmin ufku seçip geçmiş veriyi çalıştırın.</p>}
+        </>}
+        <footer className="app-footer"><span>piyasa.lab · Akademik simülasyon aracı</span><span>Gerçek emir gönderilmez</span></footer>
     </main>
   </div>;
 }

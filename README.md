@@ -73,6 +73,13 @@ portföy, hisse fiyatı, performans metrikleri ve işlem günlüğü yer alır.
 THYAO verisi repo içinde bulunur. Diğer BIST hisseleri Yahoo Finance üzerinden
 indirilir. Portu değiştirmek için `--port` kullanın.
 
+Tahmin araştırması günlük fiyat, momentum, trend, oynaklık ve hacim özellikleri
+üzerinde ridge regresyonu kullanır. Son tarihsel bölüm kronolojik doğrulama için
+ayrılır. Eğitim satırları tahmin ufku kadar geriye çekilerek hedef sızıntısı
+önlenir. Arayüz doğrulama hatasını değişim yok taban çizgisiyle karşılaştırır
+ve model taban çizgisini geçemezse uyarı gösterir. Fiyat bandı geçmiş doğrulama
+hatalarından hesaplanır, gelecekteki fiyat için garanti vermez.
+
 ### Arayüz geliştirme
 
 The interface is a React and TypeScript application backed by the Python

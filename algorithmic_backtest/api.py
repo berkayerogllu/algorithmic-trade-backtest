@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from .backtest_engine import BacktestEngine
 from .data_loader import DataLoader
 from .performance import PerformanceAnalyzer
+from .forecasting import HistoricalReturnForecaster
 from .risk_manager import RiskManager
 from .strategies import BuyAndHoldStrategy, MACDStrategy, RSIStrategy, SMACrossoverStrategy
 
@@ -37,6 +38,13 @@ class BacktestRequest(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     parameters: dict[str, int] = Field(default_factory=dict)
+
+
+class ForecastRequest(BaseModel):
+    symbol: str = Field(min_length=1, max_length=20)
+    horizon: int = Field(default=5, ge=1, le=20)
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
 
 
 @app.get("/api/health")
@@ -117,6 +125,42 @@ def run_backtest(request: BacktestRequest) -> dict:
         "points": points,
         "trades": trades,
     }
+
+
+@app.post("/api/forecast")
+def forecast(request: ForecastRequest) -> dict:
+    symbol = request.symbol.strip().upper()
+    if not re.fullmatch(r"[A-Z0-9]{1,12}(\.IS)?", symbol):
+        raise HTTPException(422, "Geçerli bir BIST hisse kodu girin.")
+    if not symbol.endswith(".IS"):
+        symbol += ".IS"
+    start = request.start_date or date(2023, 1, 1)
+    end = request.end_date
+    if end and (end < start or end > date.today()):
+        raise HTTPException(422, "Veri bitiş tarihi geçersiz.")
+    try:
+        loader = DataLoader()
+        if symbol == "THYAO.IS":
+            data = loader.load_csv(PROJECT_ROOT / "data" / "THYAO.IS.csv")
+            source = "Yahoo Finance · THYAO arşivi"
+        else:
+            until = (end + timedelta(days=1)).isoformat() if end else None
+            data = loader.download_yfinance(symbol, start.isoformat(), until)
+            source = "Yahoo Finance · Günlük tarihsel veri"
+        dates = pd.DatetimeIndex(data.index).date
+        data = data[dates >= start]
+        if end:
+            data = data[pd.DatetimeIndex(data.index).date <= end]
+        result = HistoricalReturnForecaster().forecast(data, request.horizon)
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(502, f"Veri veya tahmin hatası: {exc}") from exc
+    history = [
+        {"date": pd.Timestamp(index).strftime("%Y-%m-%d"), "close": float(value)}
+        for index, value in data["Close"].iloc[-120:].items()
+    ]
+    return {"symbol": symbol, "source": source, "history": history, **result}
 
 
 def _strategy_for(name: str, parameters: dict[str, int]):

@@ -31,6 +31,16 @@ button, input, select { font: inherit; }
 .input-wrap, .select-wrap { display: flex; align-items: center; gap: 8px; }
 .field input, .field select { width: 100%; min-width: 0; min-height: 44px; padding: 8px 10px; color: var(--ink); background: var(--paper); border: 1px solid #919d92; border-radius: 6px; font-weight: 400; font-size: 1rem; }
 .suffix { color: var(--muted); }
+.mode-tabs { display:flex; gap:20px; margin:12px 0 20px; border-bottom:1px solid var(--line); }
+.mode-tabs button { border:0; border-radius:0; background:transparent; color:var(--muted); padding:10px 2px; min-height:42px; }
+.mode-tabs button.selected { color:var(--accent); border-bottom:2px solid var(--accent); font-weight:650; }
+.forecast-intro { max-width:70ch; margin-top:10px; }
+.forecast-controls { margin-top:22px; }
+.forecast-controls input,.forecast-controls select { min-height:44px; padding:8px 10px; border:1px solid #919d92; border-radius:6px; background:var(--paper); color:var(--ink); font-size:1rem; }
+.forecast-metrics .metric-card { min-width:0; }
+.forecast-metrics .metric-value { overflow-wrap:anywhere; font-size:clamp(1.1rem,2.3vw,1.65rem); }
+.forecast-note,.forecast-empty { margin-top:18px; font-size:.875rem; }
+.forecast-warning { margin-top:16px; padding:12px 14px; border:1px solid #bf713a; border-radius:6px; color:#74431f; background:#fff6e9; font-size:.9rem; }
 .strategy-settings { margin-block: 16px; border-block: 1px solid var(--line); }
 .strategy-settings summary { cursor: pointer; padding-block: 12px; font-weight: 600; }
 .strategy-settings p { margin-bottom: 12px; }
