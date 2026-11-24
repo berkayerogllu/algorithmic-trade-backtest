@@ -10,6 +10,7 @@ type Point = { date: string; price: number; equity: number; benchmark: number };
 type Metrics = { total_return: number; sharpe_ratio: number; max_drawdown: number; win_rate: number; closed_trades: number };
 type Trade = { entry_date: string; exit_date: string; entry_price: number; exit_price: number; pnl: number; exit_reason: string };
 type BacktestResponse = { points: Point[]; trades: Trade[]; metrics: Metrics; strategy: string; symbol: string; period: string; source: string; parameters: Record<string, number> };
+type BacktestRun = { id: string; savedAt: string; result: BacktestResponse };
 type ForecastResponse = { symbol: string; source: string; as_of: string; last_close: number; predicted_return: number; predicted_close: number; lower_close: number; upper_close: number; horizon: number; validation_mae_pct: number; baseline_mae_pct: number; directional_accuracy: number; validation_samples: number; beats_baseline: boolean; history: { date: string; close: number }[] };
 
 const strategies = ['SMA Crossover', 'RSI', 'MACD', 'Buy & Hold'];
@@ -27,8 +28,31 @@ const descriptions: Record<string, string> = {
 };
 const formatTRY = (n: number) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(n);
 const formatPercent = (n: number) => `${n >= 0 ? '+' : ''}${(n * 100).toFixed(2)}%`;
+const HISTORY_STORAGE_KEY = 'piyasa-lab.backtest-history.v1';
+
+function isBacktestRun(value: unknown): value is BacktestRun {
+  if (!value || typeof value !== 'object') return false;
+  const run = value as Partial<BacktestRun>;
+  const saved = run.result as Partial<BacktestResponse> | undefined;
+  return typeof run.id === 'string' && typeof run.savedAt === 'string'
+    && typeof saved?.symbol === 'string' && typeof saved.strategy === 'string'
+    && Array.isArray(saved.points) && Array.isArray(saved.trades)
+    && typeof saved.metrics?.total_return === 'number';
+}
+
+function loadBacktestHistory(): BacktestRun[] {
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(HISTORY_STORAGE_KEY) ?? '[]');
+    return Array.isArray(parsed) ? parsed.filter(isBacktestRun).slice(0, 10) : [];
+  } catch {
+    return [];
+  }
+}
 
 function App() {
+  const [history, setHistory] = useState<BacktestRun[]>(loadBacktestHistory);
+  const [historyQuery, setHistoryQuery] = useState('');
+  const [activeHistoryId, setActiveHistoryId] = useState<string | null>(() => history[0]?.id ?? null);
   const [strategy, setStrategy] = useState(strategies[0]);
   const [mode, setMode] = useState<'backtest' | 'forecast'>('backtest');
   const [horizon, setHorizon] = useState(5);
@@ -43,17 +67,26 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [apiOnline, setApiOnline] = useState(false);
   const [error, setError] = useState('');
-  const [result, setResult] = useState<BacktestResponse | null>(null);
+  const [result, setResult] = useState<BacktestResponse | null>(() => history[0]?.result ?? null);
   const [forecast, setForecast] = useState<ForecastResponse | null>(null);
 
   const chartData = useMemo(() => result?.points ?? [], [result]);
   const closedTrades = result?.trades ?? [];
+  const filteredHistory = useMemo(() => {
+    const query = historyQuery.trim().toLocaleLowerCase('tr-TR');
+    if (!query) return history;
+    return history.filter(run => `${run.result.symbol} ${run.result.strategy} ${run.result.period}`.toLocaleLowerCase('tr-TR').includes(query));
+  }, [history, historyQuery]);
   useEffect(() => {
     const checkApi = () => fetch('/api/health').then(r => setApiOnline(r.ok)).catch(() => setApiOnline(false));
     checkApi();
     const timer = window.setInterval(checkApi, 15000);
     return () => window.clearInterval(timer);
   }, []);
+  useEffect(() => {
+    try { window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history)); }
+    catch { /* Keep the current session usable when browser storage is unavailable. */ }
+  }, [history]);
   const runBacktest = async () => {
     setBusy(true); setError('');
     try {
@@ -65,10 +98,22 @@ function App() {
         const body = await response.json().catch(() => null);
         throw new Error(typeof body?.detail === 'string' ? body.detail : 'Simülasyon çalıştırılamadı. Ayarları ve sunucu bağlantısını kontrol edin.');
       }
-      setResult(await response.json());
+      const backtestResult = await response.json() as BacktestResponse;
+      const run: BacktestRun = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, savedAt: new Date().toISOString(), result: backtestResult };
+      setResult(backtestResult);
+      setHistory(current => [run, ...current].slice(0, 10));
+      setActiveHistoryId(run.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Sunucuya ulaşılamadı. Python API sunucusunu başlatın.');
     } finally { setBusy(false); }
+  };
+
+  const openBacktestRun = (run: BacktestRun) => {
+    setResult(run.result);
+    setActiveHistoryId(run.id);
+    setMode('backtest');
+    setError('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const runForecast = async () => {
@@ -141,6 +186,25 @@ function App() {
           </div>
           {error && <div className="error-message" role="alert">{error}</div>}
         </form>
+
+        <section className="history-section" aria-labelledby="history-heading">
+          <div className="history-heading">
+            <div>
+              <div className="history-title-line"><h2 id="history-heading">Test geçmişi</h2><span className="history-count">{history.length} / 10 kayıt</span></div>
+              <p>Sonuçlar bu tarayıcıda saklanır. Bir testi açarak grafik ve işlem günlüğüne dönün.</p>
+            </div>
+            {history.length > 0 && <label className="history-search"><span className="sr-only">Test geçmişinde ara</span><input value={historyQuery} onChange={event => setHistoryQuery(event.target.value)} placeholder="Hisse veya strateji ara" /></label>}
+          </div>
+          {filteredHistory.length ? <div className="history-list">
+            {filteredHistory.map(run => <button type="button" key={run.id} className={`history-item ${run.id === activeHistoryId ? 'active' : ''}`} aria-pressed={run.id === activeHistoryId} onClick={() => openBacktestRun(run)}>
+              <span className="history-run-info"><strong>{run.result.symbol}</strong><span>{run.result.strategy}</span><small>{run.result.period} · {new Intl.DateTimeFormat('tr-TR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(run.savedAt))}</small></span>
+              <span className={`history-metric ${run.result.metrics.total_return >= 0 ? 'positive' : 'pnl-negative'}`}><small>Toplam getiri</small><strong>{formatPercent(run.result.metrics.total_return)}</strong></span>
+              <span className="history-metric"><small>Sharpe</small><strong>{run.result.metrics.sharpe_ratio.toFixed(2)}</strong></span>
+              <span className="history-metric"><small>Azami düşüş</small><strong>{formatPercent(run.result.metrics.max_drawdown)}</strong></span>
+              <span className="history-trades">{run.result.metrics.closed_trades} işlem <span aria-hidden="true">· Aç</span></span>
+            </button>)}
+          </div> : <div className="history-empty">{history.length ? 'Bu aramayla eşleşen test yok.' : 'Henüz kayıtlı backtest yok. İlk testi çalıştırdığınızda burada saklanacak.'}</div>}
+        </section>
 
         <div className="results-heading"><div><div className="section-title"><h2>Performans özeti</h2><span className="period-badge">{result?.period}</span></div><p>{result ? `${result.symbol} · ${result.strategy} · ${chartData.length.toLocaleString('tr-TR')} işlem günü` : 'Henüz bir simülasyon çalıştırılmadı.'}</p></div><button className="export-button" disabled={!result} onClick={() => result && downloadCsv(result)}><Download size={15} /> CSV indir</button></div>
 
