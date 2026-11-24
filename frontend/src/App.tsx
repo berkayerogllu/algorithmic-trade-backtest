@@ -3,7 +3,7 @@ import {
   Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer,
   Tooltip, XAxis, YAxis,
 } from 'recharts';
-import { Download } from 'lucide-react';
+import { Download, Save, Trash2 } from 'lucide-react';
 import { StockPicker } from './StockPicker';
 import { Market } from './stockSymbols';
 
@@ -101,10 +101,8 @@ function App() {
         throw new Error(typeof body?.detail === 'string' ? body.detail : 'Simülasyon çalıştırılamadı. Ayarları ve sunucu bağlantısını kontrol edin.');
       }
       const backtestResult = await response.json() as BacktestResponse;
-      const run: BacktestRun = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, savedAt: new Date().toISOString(), result: backtestResult };
       setResult(backtestResult);
-      setHistory(current => [run, ...current].slice(0, 10));
-      setActiveHistoryId(run.id);
+      setActiveHistoryId(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Sunucuya ulaşılamadı. Python API sunucusunu başlatın.');
     } finally { setBusy(false); }
@@ -116,6 +114,24 @@ function App() {
     setMode('backtest');
     setError('');
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const saveCurrentBacktest = () => {
+    if (!result || activeHistoryId) return;
+    const run: BacktestRun = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, savedAt: new Date().toISOString(), result };
+    setHistory(current => [run, ...current].slice(0, 10));
+    setActiveHistoryId(run.id);
+  };
+
+  const removeBacktestRun = (runId: string) => {
+    setHistory(current => current.filter(run => run.id !== runId));
+    if (activeHistoryId === runId) setActiveHistoryId(null);
+  };
+
+  const clearBacktestHistory = () => {
+    if (!window.confirm('Kaydedilmiş tüm test geçmişi bu tarayıcıdan silinsin mi?')) return;
+    setHistory([]);
+    setActiveHistoryId(null);
   };
 
   const runForecast = async () => {
@@ -193,22 +209,28 @@ function App() {
           <div className="history-heading">
             <div>
               <div className="history-title-line"><h2 id="history-heading">Test geçmişi</h2><span className="history-count">{history.length} / 10 kayıt</span></div>
-              <p>Sonuçlar bu tarayıcıda saklanır. Bir testi açarak grafik ve işlem günlüğüne dönün.</p>
+              <p>Yalnızca kaydettiğiniz sonuçlar bu tarayıcıda saklanır. Bir testi açarak grafik ve işlem günlüğüne dönün.</p>
             </div>
-            {history.length > 0 && <label className="history-search"><span className="sr-only">Test geçmişinde ara</span><input value={historyQuery} onChange={event => setHistoryQuery(event.target.value)} placeholder="Hisse veya strateji ara" /></label>}
+            {history.length > 0 && <div className="history-tools">
+              <label className="history-search"><span className="sr-only">Test geçmişinde ara</span><input value={historyQuery} onChange={event => setHistoryQuery(event.target.value)} placeholder="Hisse veya strateji ara" /></label>
+              <button type="button" className="history-clear" onClick={clearBacktestHistory}>Geçmişi temizle</button>
+            </div>}
           </div>
           {filteredHistory.length ? <div className="history-list">
-            {filteredHistory.map(run => <button type="button" key={run.id} className={`history-item ${run.id === activeHistoryId ? 'active' : ''}`} aria-pressed={run.id === activeHistoryId} onClick={() => openBacktestRun(run)}>
-              <span className="history-run-info"><strong>{run.result.symbol}</strong><span>{run.result.strategy}</span><small>{run.result.period} · {new Intl.DateTimeFormat('tr-TR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(run.savedAt))}</small></span>
-              <span className={`history-metric ${run.result.metrics.total_return >= 0 ? 'positive' : 'pnl-negative'}`}><small>Toplam getiri</small><strong>{formatPercent(run.result.metrics.total_return)}</strong></span>
-              <span className="history-metric"><small>Sharpe</small><strong>{run.result.metrics.sharpe_ratio.toFixed(2)}</strong></span>
-              <span className="history-metric"><small>Azami düşüş</small><strong>{formatPercent(run.result.metrics.max_drawdown)}</strong></span>
-              <span className="history-trades">{run.result.metrics.closed_trades} işlem <span aria-hidden="true">· Aç</span></span>
-            </button>)}
-          </div> : <div className="history-empty">{history.length ? 'Bu aramayla eşleşen test yok.' : 'Henüz kayıtlı backtest yok. İlk testi çalıştırdığınızda burada saklanacak.'}</div>}
+            {filteredHistory.map(run => <div className="history-row" key={run.id}>
+              <button type="button" className={`history-item ${run.id === activeHistoryId ? 'active' : ''}`} aria-pressed={run.id === activeHistoryId} onClick={() => openBacktestRun(run)}>
+                <span className="history-run-info"><strong>{run.result.symbol}</strong><span>{run.result.strategy}</span><small>{run.result.period} · {new Intl.DateTimeFormat('tr-TR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(run.savedAt))}</small></span>
+                <span className={`history-metric ${run.result.metrics.total_return >= 0 ? 'positive' : 'pnl-negative'}`}><small>Toplam getiri</small><strong>{formatPercent(run.result.metrics.total_return)}</strong></span>
+                <span className="history-metric"><small>Sharpe</small><strong>{run.result.metrics.sharpe_ratio.toFixed(2)}</strong></span>
+                <span className="history-metric"><small>Azami düşüş</small><strong>{formatPercent(run.result.metrics.max_drawdown)}</strong></span>
+                <span className="history-trades">{run.result.metrics.closed_trades} işlem <span aria-hidden="true">· Aç</span></span>
+              </button>
+              <button type="button" className="history-remove" aria-label={`${run.result.symbol} ${run.result.strategy} kaydını sil`} title="Bu kaydı sil" onClick={() => removeBacktestRun(run.id)}><Trash2 size={16} aria-hidden="true" /></button>
+            </div>)}
+          </div> : <div className="history-empty">{history.length ? 'Bu aramayla eşleşen test yok.' : 'Henüz kaydedilmiş test yok. Bir backtest çalıştırıp saklamak istediğiniz sonucu “Geçmişe kaydet” ile ekleyin.'}</div>}
         </section>
 
-        <div className="results-heading"><div><div className="section-title"><h2>Performans özeti</h2><span className="period-badge">{result?.period}</span></div><p>{result ? `${result.symbol} · ${result.strategy} · ${chartData.length.toLocaleString('tr-TR')} işlem günü` : 'Henüz bir simülasyon çalıştırılmadı.'}</p></div><button className="export-button" disabled={!result} onClick={() => result && downloadCsv(result)}><Download size={15} /> CSV indir</button></div>
+        <div className="results-heading"><div><div className="section-title"><h2>Performans özeti</h2><span className="period-badge">{result?.period}</span></div><p>{result ? `${result.symbol} · ${result.strategy} · ${chartData.length.toLocaleString('tr-TR')} işlem günü` : 'Henüz bir simülasyon çalıştırılmadı.'}</p></div><div className="result-actions">{result && <button className="export-button" disabled={Boolean(activeHistoryId)} onClick={saveCurrentBacktest}><Save size={15} />{activeHistoryId ? 'Geçmişte kayıtlı' : 'Geçmişe kaydet'}</button>}<button className="export-button" disabled={!result} onClick={() => result && downloadCsv(result)}><Download size={15} /> CSV indir</button></div></div>
 
         <section className="metric-grid" aria-label="Performans metrikleri">
           <MetricCard label="Toplam getiri" value={metrics ? formatPercent(metrics.total_return) : '—'} detail={metrics ? `${formatMoney(chartData[chartData.length - 1].equity, result?.market)} portföy değeri` : 'Başlangıçtan bugüne'} trend={metrics ? metrics.total_return >= 0 : null} />
