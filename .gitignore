@@ -9,4 +9,5 @@ frontend/.vite/
 .env
 .env.*
 !.env.example
+supabase/.temp/
 
