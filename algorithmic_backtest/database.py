@@ -34,6 +34,51 @@ def check_connection() -> bool:
     return True
 
 
+def search_stock_universe(market: str, query: str = "", limit: int = 12) -> list[dict[str, str]]:
+    """Search the unified, server-side BIST and US exchange catalog."""
+    needle = query.strip()
+    pattern = f"%{needle}%"
+    with _connect() as connection:
+        rows = connection.execute(
+            """select symbol, company_name, exchange, market
+               from app_data.stock_universe
+               where market = %s
+                 and (%s = '' or symbol ilike %s
+                      or translate(lower(company_name), 'çğıöşü', 'cgiosu') ilike translate(lower(%s), 'çğıöşü', 'cgiosu')
+                      or exchange ilike %s)
+               order by
+                 case when upper(symbol) = upper(%s) then 0
+                      when upper(symbol) like upper(%s) then 1
+                      when translate(lower(company_name), 'çğıöşü', 'cgiosu') like translate(lower(%s), 'çğıöşü', 'cgiosu') then 2
+                      else 3 end,
+                 sort_order asc,
+                 company_name asc
+               limit %s""",
+            (market, needle, pattern, pattern, pattern, needle, f"{needle}%", f"{needle}%", limit),
+        ).fetchall()
+    return [
+        {"symbol": row["symbol"], "name": row["company_name"], "exchange": row["exchange"], "market": row["market"]}
+        for row in rows
+    ]
+
+
+def upsert_stock_universe(symbols: list[dict[str, str]]) -> None:
+    """Cache valid provider discoveries in the same catalog used by search."""
+    if not symbols:
+        return
+    with _connect() as connection:
+        connection.executemany(
+            """insert into app_data.stock_universe (market, symbol, company_name, exchange, source)
+               values (%(market)s, %(symbol)s, %(name)s, %(exchange)s, 'yahoo_finance')
+               on conflict (market, symbol) do update
+               set company_name = excluded.company_name,
+                   exchange = excluded.exchange,
+                   source = excluded.source,
+                   updated_at = now()""",
+            symbols,
+        )
+
+
 def list_saved_backtests(limit: int = 10) -> list[dict[str, Any]]:
     with _connect() as connection:
         rows = connection.execute(

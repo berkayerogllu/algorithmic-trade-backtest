@@ -68,6 +68,13 @@ ayarlarına koymayın. Uygulama yalnızca **Geçmişe kaydet** ile gönderilen s
 backtesti özel `app_data.backtest_history` tablosunda tutar. Eski tarayıcı
 geçmişi Supabase’e aktarılmaz.
 
+Hisse seçimi, aynı Supabase projesindeki `app_data.stock_universe` kataloğunu
+kullanır. Katalog KAP’ın BIST pazar listesi ve Nasdaq Trader’ın Nasdaq/NYSE
+sembol dosyalarından alınan başlangıç listesini içerir; arama BIST veya ABD
+piyasasına göre süzülür. Başlangıç listesinde bulunmayan arama eşleşmeleri
+Yahoo Finance’ten bulunup kataloğa eklenir. Bu katalog arama içindir; yalnızca
+“Geçmişe kaydet” ile gönderilen backtest sonuçları geçmiş tablosuna yazılır.
+
 Uygulamayı tek terminalden başlatın:
 
 ```bash
