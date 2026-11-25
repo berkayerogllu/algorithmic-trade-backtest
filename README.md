@@ -61,6 +61,13 @@ Python bağımlılıklarını kurun:
 python -m pip install -e .
 ```
 
+Supabase bağlantısı için repo kökünde `.env.example` dosyasını `.env` olarak
+kopyalayın ve `DATABASE_URL` değerini Supabase Session pooler bilgileriyle
+doldurun. `.env` Git tarafından yok sayılır; parolayı kaynak koda veya frontend
+ayarlarına koymayın. Uygulama yalnızca **Geçmişe kaydet** ile gönderilen son 10
+backtesti özel `app_data.backtest_history` tablosunda tutar. Eski tarayıcı
+geçmişi Supabase’e aktarılmaz.
+
 Uygulamayı tek terminalden başlatın:
 
 ```bash

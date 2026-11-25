@@ -29,32 +29,14 @@ const descriptions: Record<string, string> = {
 };
 const formatMoney = (n: number, market: Market = 'BIST') => new Intl.NumberFormat(market === 'US' ? 'en-US' : 'tr-TR', { style: 'currency', currency: market === 'US' ? 'USD' : 'TRY', maximumFractionDigits: 0 }).format(n);
 const formatPercent = (n: number) => `${n >= 0 ? '+' : ''}${(n * 100).toFixed(2)}%`;
-const HISTORY_STORAGE_KEY = 'piyasa-lab.backtest-history.v1';
-
-function isBacktestRun(value: unknown): value is BacktestRun {
-  if (!value || typeof value !== 'object') return false;
-  const run = value as Partial<BacktestRun>;
-  const saved = run.result as Partial<BacktestResponse> | undefined;
-  return typeof run.id === 'string' && typeof run.savedAt === 'string'
-    && typeof saved?.symbol === 'string' && typeof saved.strategy === 'string'
-    && Array.isArray(saved.points) && Array.isArray(saved.trades)
-    && typeof saved.metrics?.total_return === 'number';
-}
-
-function loadBacktestHistory(): BacktestRun[] {
-  try {
-    const parsed: unknown = JSON.parse(window.localStorage.getItem(HISTORY_STORAGE_KEY) ?? '[]');
-    return Array.isArray(parsed) ? parsed.filter(isBacktestRun).slice(0, 10) : [];
-  } catch {
-    return [];
-  }
-}
 
 function App() {
   const [market, setMarket] = useState<Market>('BIST');
-  const [history, setHistory] = useState<BacktestRun[]>(loadBacktestHistory);
+  const [history, setHistory] = useState<BacktestRun[]>([]);
   const [historyQuery, setHistoryQuery] = useState('');
-  const [activeHistoryId, setActiveHistoryId] = useState<string | null>(() => history[0]?.id ?? null);
+  const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
+  const [historyBusy, setHistoryBusy] = useState(true);
+  const [historyError, setHistoryError] = useState('');
   const [strategy, setStrategy] = useState(strategies[0]);
   const [mode, setMode] = useState<'backtest' | 'forecast'>('backtest');
   const [horizon, setHorizon] = useState(5);
@@ -68,8 +50,9 @@ function App() {
   const [riskEnabled, setRiskEnabled] = useState(true);
   const [busy, setBusy] = useState(false);
   const [apiOnline, setApiOnline] = useState(false);
+  const [databaseOnline, setDatabaseOnline] = useState(false);
   const [error, setError] = useState('');
-  const [result, setResult] = useState<BacktestResponse | null>(() => history[0]?.result ?? null);
+  const [result, setResult] = useState<BacktestResponse | null>(null);
   const [forecast, setForecast] = useState<ForecastResponse | null>(null);
 
   const chartData = useMemo(() => result?.points ?? [], [result]);
@@ -80,15 +63,27 @@ function App() {
     return history.filter(run => `${run.result.symbol} ${run.result.strategy} ${run.result.period}`.toLocaleLowerCase('tr-TR').includes(query));
   }, [history, historyQuery]);
   useEffect(() => {
-    const checkApi = () => fetch('/api/health').then(r => setApiOnline(r.ok)).catch(() => setApiOnline(false));
+    const checkApi = () => fetch('/api/health').then(async response => {
+      const health = await response.json().catch(() => null);
+      setApiOnline(response.ok);
+      setDatabaseOnline(response.ok && health?.database === 'connected');
+    }).catch(() => { setApiOnline(false); setDatabaseOnline(false); });
     checkApi();
     const timer = window.setInterval(checkApi, 15000);
     return () => window.clearInterval(timer);
   }, []);
   useEffect(() => {
-    try { window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history)); }
-    catch { /* Keep the current session usable when browser storage is unavailable. */ }
-  }, [history]);
+    let cancelled = false;
+    fetch('/api/history').then(async response => {
+      if (!response.ok) throw new Error('Supabase test geçmişine ulaşılamıyor.');
+      return await response.json() as BacktestRun[];
+    }).then(savedRuns => {
+      if (!cancelled) { setHistory(savedRuns); setHistoryError(''); }
+    }).catch(e => {
+      if (!cancelled) setHistoryError(e instanceof Error ? e.message : 'Test geçmişi yüklenemedi.');
+    }).finally(() => { if (!cancelled) setHistoryBusy(false); });
+    return () => { cancelled = true; };
+  }, []);
   const runBacktest = async () => {
     setBusy(true); setError('');
     try {
@@ -116,22 +111,47 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const saveCurrentBacktest = () => {
-    if (!result || activeHistoryId) return;
-    const run: BacktestRun = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, savedAt: new Date().toISOString(), result };
-    setHistory(current => [run, ...current].slice(0, 10));
-    setActiveHistoryId(run.id);
+  const saveCurrentBacktest = async () => {
+    if (!result || activeHistoryId || historyBusy) return;
+    setHistoryBusy(true); setHistoryError('');
+    try {
+      const response = await fetch('/api/history', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ result }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(typeof body?.detail === 'string' ? body.detail : 'Backtest Supabase’e kaydedilemedi.');
+      const run = body as BacktestRun;
+      setHistory(current => [run, ...current].slice(0, 10));
+      setActiveHistoryId(run.id);
+    } catch (e) {
+      setHistoryError(e instanceof Error ? e.message : 'Backtest Supabase’e kaydedilemedi.');
+    } finally { setHistoryBusy(false); }
   };
 
-  const removeBacktestRun = (runId: string) => {
-    setHistory(current => current.filter(run => run.id !== runId));
-    if (activeHistoryId === runId) setActiveHistoryId(null);
+  const removeBacktestRun = async (runId: string) => {
+    setHistoryBusy(true); setHistoryError('');
+    try {
+      const response = await fetch(`/api/history/${runId}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error('Kayıt Supabase’den silinemedi.');
+      setHistory(current => current.filter(run => run.id !== runId));
+      if (activeHistoryId === runId) setActiveHistoryId(null);
+    } catch (e) {
+      setHistoryError(e instanceof Error ? e.message : 'Kayıt silinemedi.');
+    } finally { setHistoryBusy(false); }
   };
 
-  const clearBacktestHistory = () => {
-    if (!window.confirm('Kaydedilmiş tüm test geçmişi bu tarayıcıdan silinsin mi?')) return;
-    setHistory([]);
-    setActiveHistoryId(null);
+  const clearBacktestHistory = async () => {
+    if (!window.confirm('Supabase’de kaydedilmiş tüm test geçmişi silinsin mi?')) return;
+    setHistoryBusy(true); setHistoryError('');
+    try {
+      const response = await fetch('/api/history', { method: 'DELETE' });
+      if (!response.ok) throw new Error('Test geçmişi Supabase’den temizlenemedi.');
+      setHistory([]);
+      setActiveHistoryId(null);
+    } catch (e) {
+      setHistoryError(e instanceof Error ? e.message : 'Test geçmişi temizlenemedi.');
+    } finally { setHistoryBusy(false); }
   };
 
   const runForecast = async () => {
@@ -153,7 +173,7 @@ function App() {
   return <div className="app-shell">
     <header className="topbar">
       <a href="#terminal" className="brand">piyasa.lab</a>
-      <span className="connection">Simülasyon motoru · {apiOnline ? 'Bağlı' : 'Çevrimdışı'}</span>
+      <span className="connection">Simülasyon · {apiOnline ? 'Bağlı' : 'Çevrimdışı'} · Supabase · {databaseOnline ? 'Bağlı' : 'Bağlantı yok'}</span>
     </header>
     <main id="terminal" className="content">
         <header className="page-heading">
@@ -209,13 +229,14 @@ function App() {
           <div className="history-heading">
             <div>
               <div className="history-title-line"><h2 id="history-heading">Test geçmişi</h2><span className="history-count">{history.length} / 10 kayıt</span></div>
-              <p>Yalnızca kaydettiğiniz sonuçlar bu tarayıcıda saklanır. Bir testi açarak grafik ve işlem günlüğüne dönün.</p>
+              <p>Yalnızca “Geçmişe kaydet” dediğiniz sonuçlar Supabase’de saklanır. Geçmişten testi açıp grafik ve işlem günlüğüne dönün.</p>
             </div>
             {history.length > 0 && <div className="history-tools">
               <label className="history-search"><span className="sr-only">Test geçmişinde ara</span><input value={historyQuery} onChange={event => setHistoryQuery(event.target.value)} placeholder="Hisse veya strateji ara" /></label>
               <button type="button" className="history-clear" onClick={clearBacktestHistory}>Geçmişi temizle</button>
             </div>}
           </div>
+          {historyError && <div className="error-message" role="alert">{historyError}</div>}
           {filteredHistory.length ? <div className="history-list">
             {filteredHistory.map(run => <div className="history-row" key={run.id}>
               <button type="button" className={`history-item ${run.id === activeHistoryId ? 'active' : ''}`} aria-pressed={run.id === activeHistoryId} onClick={() => openBacktestRun(run)}>
@@ -227,10 +248,10 @@ function App() {
               </button>
               <button type="button" className="history-remove" aria-label={`${run.result.symbol} ${run.result.strategy} kaydını sil`} title="Bu kaydı sil" onClick={() => removeBacktestRun(run.id)}><Trash2 size={16} aria-hidden="true" /></button>
             </div>)}
-          </div> : <div className="history-empty">{history.length ? 'Bu aramayla eşleşen test yok.' : 'Henüz kaydedilmiş test yok. Bir backtest çalıştırıp saklamak istediğiniz sonucu “Geçmişe kaydet” ile ekleyin.'}</div>}
+          </div> : <div className="history-empty">{historyBusy ? 'Supabase test geçmişi yükleniyor…' : history.length ? 'Bu aramayla eşleşen test yok.' : 'Henüz kaydedilmiş test yok. Bir backtest çalıştırıp saklamak istediğiniz sonucu “Geçmişe kaydet” ile ekleyin.'}</div>}
         </section>
 
-        <div className="results-heading"><div><div className="section-title"><h2>Performans özeti</h2><span className="period-badge">{result?.period}</span></div><p>{result ? `${result.symbol} · ${result.strategy} · ${chartData.length.toLocaleString('tr-TR')} işlem günü` : 'Henüz bir simülasyon çalıştırılmadı.'}</p></div><div className="result-actions">{result && <button className="export-button" disabled={Boolean(activeHistoryId)} onClick={saveCurrentBacktest}><Save size={15} />{activeHistoryId ? 'Geçmişte kayıtlı' : 'Geçmişe kaydet'}</button>}<button className="export-button" disabled={!result} onClick={() => result && downloadCsv(result)}><Download size={15} /> CSV indir</button></div></div>
+        <div className="results-heading"><div><div className="section-title"><h2>Performans özeti</h2><span className="period-badge">{result?.period}</span></div><p>{result ? `${result.symbol} · ${result.strategy} · ${chartData.length.toLocaleString('tr-TR')} işlem günü` : 'Henüz bir simülasyon çalıştırılmadı.'}</p></div><div className="result-actions">{result && <button className="export-button" disabled={Boolean(activeHistoryId) || historyBusy || !databaseOnline} onClick={saveCurrentBacktest}><Save size={15} />{activeHistoryId ? 'Geçmişte kayıtlı' : historyBusy ? 'Kaydediliyor…' : 'Geçmişe kaydet'}</button>}<button className="export-button" disabled={!result} onClick={() => result && downloadCsv(result)}><Download size={15} /> CSV indir</button></div></div>
 
         <section className="metric-grid" aria-label="Performans metrikleri">
           <MetricCard label="Toplam getiri" value={metrics ? formatPercent(metrics.total_return) : '—'} detail={metrics ? `${formatMoney(chartData[chartData.length - 1].equity, result?.market)} portföy değeri` : 'Başlangıçtan bugüne'} trend={metrics ? metrics.total_return >= 0 : null} />

@@ -6,16 +6,19 @@ from datetime import date, timedelta
 from time import monotonic
 from pathlib import Path
 import re
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
+from uuid import UUID
 
 import pandas as pd
 import yfinance as yf
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+import psycopg
 
 from .backtest_engine import BacktestEngine
 from .data_loader import DataLoader
+from . import database
 from .performance import PerformanceAnalyzer
 from .forecasting import HistoricalReturnForecaster
 from .risk_manager import RiskManager
@@ -28,7 +31,7 @@ app = FastAPI(title="BIST Backtest API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Content-Type"],
 )
 
@@ -53,9 +56,62 @@ class ForecastRequest(BaseModel):
     end_date: Optional[date] = None
 
 
+class SavedBacktestRequest(BaseModel):
+    result: dict[str, Any]
+
+
 @app.get("/api/health")
 def health() -> dict[str, str]:
-    return {"status": "ok"}
+    try:
+        database.check_connection()
+        database_status = "connected"
+    except (psycopg.Error, RuntimeError):
+        database_status = "disconnected"
+    return {"status": "ok", "database": database_status}
+
+
+@app.get("/api/history")
+def get_backtest_history() -> list[dict[str, Any]]:
+    try:
+        return database.list_saved_backtests()
+    except (psycopg.Error, RuntimeError) as exc:
+        raise HTTPException(status_code=503, detail="Supabase test geçmişine ulaşılamıyor.") from exc
+
+
+@app.post("/api/history", status_code=201)
+def save_backtest_history(request: SavedBacktestRequest) -> dict[str, Any]:
+    result = request.result
+    if (
+        not isinstance(result.get("symbol"), str)
+        or result.get("market") not in ("BIST", "US")
+        or result.get("strategy") not in ("SMA Crossover", "RSI", "MACD", "Buy & Hold")
+        or not isinstance(result.get("metrics"), dict)
+        or not isinstance(result.get("points"), list)
+        or not isinstance(result.get("trades"), list)
+    ):
+        raise HTTPException(status_code=422, detail="Kaydedilecek backtest sonucu geçersiz.")
+    try:
+        return database.save_backtest(result)
+    except (psycopg.Error, RuntimeError) as exc:
+        raise HTTPException(status_code=503, detail="Backtest Supabase'e kaydedilemedi.") from exc
+
+
+@app.delete("/api/history/{run_id}", status_code=204)
+def delete_backtest_history(run_id: UUID) -> None:
+    try:
+        deleted = database.delete_saved_backtest(run_id)
+    except (psycopg.Error, RuntimeError) as exc:
+        raise HTTPException(status_code=503, detail="Supabase test geçmişine ulaşılamıyor.") from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Kayıt bulunamadı.")
+
+
+@app.delete("/api/history", status_code=204)
+def clear_backtest_history() -> None:
+    try:
+        database.clear_saved_backtests()
+    except (psycopg.Error, RuntimeError) as exc:
+        raise HTTPException(status_code=503, detail="Supabase test geçmişi temizlenemedi.") from exc
 
 
 @app.get("/api/symbols")
