@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer,
-  Tooltip, XAxis, YAxis,
+  ReferenceLine, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { Download, Save, Trash2 } from 'lucide-react';
 import { StockPicker } from './StockPicker';
@@ -61,6 +61,10 @@ const combinationDescriptions: Record<CombinationMethod, string> = {
   OR: 'Seçilen stratejilerden biri pozisyona girerse alım yapılır. Daha sık sinyal üretir.',
   MAJORITY: 'Stratejilerin yarısından fazlası aynı yönde olduğunda pozisyona girilir.',
 };
+const indicatorPalette = ['#70d6b3', '#f2b96f', '#7fb3ff', '#da90bd', '#c0db76', '#60d8e6', '#b7a0ff', '#ff8e7a'];
+const chartDateLabel = (value: string) => value.startsWith('+')
+  ? value
+  : new Date(`${value}T12:00:00`).toLocaleDateString('tr-TR', { month: 'short', year: '2-digit' });
 const isoDate = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const todayISO = () => isoDate(new Date());
 const monthsAgoISO = (months: number) => {
@@ -526,24 +530,29 @@ function App() {
             </div>
           </div>
           {showIndicatorComparison && <p className="chart-explanation">Kapanış ve fiyat bazlı çizgiler ilk fiyatı 100 kabul eder. RSI/Stochastic için 50, MACD için sıfır, karşılaştırma endeksinde 100’e denk gelir.</p>}
-          {showIndicatorComparison && <div className="indicator-legend" aria-label="Grafik çizgileri">
-            <span><i style={{ backgroundColor: '#202b27' }} />Hisse fiyatı</span>
-            {(result?.indicator_lines ?? []).map((line, index) => <span key={line.key}><i style={{ backgroundColor: ['#176b56', '#bf713a', '#5574a5', '#9b5d83', '#738d3c', '#1596a3', '#835cb5', '#bd5546'][index % 8] }} />{line.name}</span>)}
+          {showIndicatorComparison ? <div className="indicator-legend" aria-label="Grafik çizgileri">
+            <span><i style={{ borderTopColor: '#f3eee0' }} />Hisse fiyatı</span>
+            {(result?.indicator_lines ?? []).map((line, index) => <span key={line.key}><i style={{ borderTopColor: indicatorPalette[index % indicatorPalette.length] }} />{line.name}</span>)}
+          </div> : <div className="indicator-legend" aria-label="Portföy grafiği çizgileri">
+            <span><i style={{ borderTopColor: '#70d6b3' }} />Strateji portföyü</span>
+            <span><i className="legend-dashed" style={{ borderTopColor: '#f2b96f' }} />Al-tut karşılaştırması</span>
           </div>}
+          {!showIndicatorComparison && chartData.length > 0 && <p className="chart-explanation">Dikey eksen, portföy hareketlerini daha rahat görmeniz için dönem içindeki değer aralığına göre ölçeklenir.</p>}
           <div className="chart-wrap">
             {chartData.length ? <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={showIndicatorComparison ? indicatorChartData : chartData} margin={{ top: 16, right: 10, bottom: 0, left: 2 }}>
-                <defs><linearGradient id="equityFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#176b56" stopOpacity={0.17} /><stop offset="100%" stopColor="#176b56" stopOpacity={0} /></linearGradient></defs>
-                <CartesianGrid stroke="#dedfd7" vertical={false} />
-                <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fill: '#56635e', fontSize: 11 }} minTickGap={44} />
-                <YAxis domain={showIndicatorComparison ? ['dataMin - 5', 'dataMax + 5'] : [0, 'auto']} tickLine={false} axisLine={false} tick={{ fill: '#56635e', fontSize: 11 }} tickFormatter={value => showIndicatorComparison ? value.toFixed(0) : formatMoney(value, result?.market)} width={64} />
-                <Tooltip contentStyle={{ background: '#fffdf8', border: '1px solid #dedfd7', borderRadius: 8, color: '#202b27' }} formatter={(value: number) => showIndicatorComparison ? `${value.toFixed(2)} endeks` : formatMoney(value, result?.market)} />
+              <ComposedChart data={showIndicatorComparison ? indicatorChartData : chartData} margin={{ top: 18, right: 18, bottom: 0, left: 8 }}>
+                <defs><linearGradient id="equityFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#70d6b3" stopOpacity={0.2} /><stop offset="100%" stopColor="#70d6b3" stopOpacity={0.015} /></linearGradient></defs>
+                <CartesianGrid stroke="#26352e" strokeDasharray="3 5" vertical={false} />
+                <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fill: '#a4b2aa', fontSize: 11 }} tickFormatter={chartDateLabel} minTickGap={44} />
+                <YAxis domain={showIndicatorComparison ? ['dataMin - 5', 'dataMax + 5'] : [(value: number) => Math.max(0, Math.floor(value * 0.96)), (value: number) => Math.ceil(value * 1.04)]} tickLine={false} axisLine={false} tick={{ fill: '#a4b2aa', fontSize: 11 }} tickFormatter={value => showIndicatorComparison ? value.toFixed(0) : formatMoney(value, result?.market)} width={74} />
+                <Tooltip labelFormatter={label => chartDateLabel(String(label))} contentStyle={{ background: '#111916', border: '1px solid #33443b', borderRadius: 8, color: '#e7eee9', boxShadow: '0 12px 32px #0008' }} itemStyle={{ color: '#e7eee9' }} labelStyle={{ color: '#a4b2aa', marginBottom: 6 }} formatter={(value: number) => showIndicatorComparison ? `${value.toFixed(2)} endeks` : formatMoney(value, result?.market)} />
                 {showIndicatorComparison ? <>
-                  <Line type="monotone" dataKey="priceIndex" name="Hisse fiyatı · 100 baz" stroke="#202b27" strokeWidth={2.5} dot={false} connectNulls />
-                  {(result?.indicator_lines ?? []).map((line, index) => <Line key={line.key} type="monotone" dataKey={line.key} name={line.name} stroke={['#176b56', '#bf713a', '#5574a5', '#9b5d83', '#738d3c', '#1596a3', '#835cb5', '#bd5546'][index % 8]} strokeWidth={1.7} dot={false} connectNulls />)}
+                  <ReferenceLine y={100} stroke="#687a70" strokeDasharray="5 5" />
+                  <Line type="monotone" dataKey="priceIndex" name="Hisse fiyatı · 100 baz" stroke="#f3eee0" strokeWidth={2.5} dot={false} connectNulls />
+                  {(result?.indicator_lines ?? []).map((line, index) => <Line key={line.key} type="monotone" dataKey={line.key} name={line.name} stroke={indicatorPalette[index % indicatorPalette.length]} strokeWidth={2} dot={false} connectNulls />)}
                 </> : <>
-                  <Area type="monotone" dataKey="equity" stroke="#176b56" strokeWidth={2} fill="url(#equityFill)" name="Strateji" />
-                  <Line type="monotone" dataKey="benchmark" stroke="#73808d" strokeWidth={1.5} strokeDasharray="5 5" dot={false} name="Al-tut" />
+                  <Area type="monotone" dataKey="equity" stroke="#70d6b3" strokeWidth={2.5} fill="url(#equityFill)" name="Strateji portföyü" dot={false} activeDot={{ r: 4, fill: '#70d6b3', stroke: '#0b100e', strokeWidth: 2 }} />
+                  <Line type="monotone" dataKey="benchmark" stroke="#f2b96f" strokeWidth={2} strokeDasharray="6 5" dot={false} activeDot={{ r: 4, fill: '#f2b96f', stroke: '#0b100e', strokeWidth: 2 }} name="Al-tut karşılaştırması" />
                 </>}
               </ComposedChart>
             </ResponsiveContainer> : <p className="empty-chart">Simülasyonu çalıştırınca strateji ve al-tut sonuçları burada görünür.</p>}
