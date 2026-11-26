@@ -66,7 +66,7 @@ const combinationDescriptions: Record<CombinationMethod, string> = {
   OR: 'Seçilen stratejilerden biri pozisyona girerse alım yapılır. Daha sık sinyal üretir.',
   MAJORITY: 'Stratejilerin yarısından fazlası aynı yönde olduğunda pozisyona girilir.',
 };
-const indicatorPalette = ['#70d6b3', '#f2b96f', '#7fb3ff', '#da90bd', '#c0db76', '#60d8e6', '#b7a0ff', '#ff8e7a'];
+const indicatorPalette = ['#00a6fb', '#e600ff', '#ff2e88', '#00b874', '#ff4d00', '#00bcd4', '#8b5cf6', '#ffb000'];
 const chartDateLabel = (value: string) => value.startsWith('+')
   ? value
   : new Date(`${value}T12:00:00`).toLocaleDateString('tr-TR', { month: 'short', year: '2-digit' });
@@ -606,25 +606,25 @@ function App() {
             <span><i style={{ borderTopColor: '#f3eee0' }} />Hisse fiyatı</span>
             {(result?.indicator_lines ?? []).map((line, index) => <span key={line.key}><i style={{ borderTopColor: indicatorPalette[index % indicatorPalette.length] }} />{line.name}</span>)}
           </div> : <div className="indicator-legend" aria-label="Portföy grafiği çizgileri">
-            <span><i style={{ borderTopColor: '#70d6b3' }} />Strateji portföyü</span>
-            <span><i className="legend-dashed" style={{ borderTopColor: '#f2b96f' }} />Al-tut karşılaştırması</span>
+            <span><i style={{ borderTopColor: '#00c853' }} />Strateji portföyü</span>
+            <span><i className="legend-dashed" style={{ borderTopColor: '#ffab00' }} />Al-tut karşılaştırması</span>
           </div>}
           {!showIndicatorComparison && chartData.length > 0 && <p className="chart-explanation">Dikey eksen, portföy hareketlerini daha rahat görmeniz için dönem içindeki değer aralığına göre ölçeklenir.</p>}
           <div className="chart-wrap">
             {chartData.length ? <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={showIndicatorComparison ? indicatorChartData : chartData} margin={{ top: 18, right: 18, bottom: 0, left: 8 }}>
-                <defs><linearGradient id="equityFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#70d6b3" stopOpacity={0.2} /><stop offset="100%" stopColor="#70d6b3" stopOpacity={0.015} /></linearGradient></defs>
-                <CartesianGrid stroke="#26352e" strokeDasharray="3 5" vertical={false} />
-                <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fill: '#a4b2aa', fontSize: 11 }} tickFormatter={chartDateLabel} minTickGap={44} />
-                <YAxis domain={showIndicatorComparison ? ['dataMin - 5', 'dataMax + 5'] : [(value: number) => Math.max(0, Math.floor(value * 0.96)), (value: number) => Math.ceil(value * 1.04)]} tickLine={false} axisLine={false} tick={{ fill: '#a4b2aa', fontSize: 11 }} tickFormatter={value => showIndicatorComparison ? value.toFixed(0) : formatMoney(value, result?.market)} width={74} />
-                <Tooltip labelFormatter={label => chartDateLabel(String(label))} contentStyle={{ background: '#111916', border: '1px solid #33443b', borderRadius: 8, color: '#e7eee9', boxShadow: '0 12px 32px #0008' }} itemStyle={{ color: '#e7eee9' }} labelStyle={{ color: '#a4b2aa', marginBottom: 6 }} formatter={(value: number) => showIndicatorComparison ? `${value.toFixed(2)} endeks` : formatMoney(value, result?.market)} />
+                <defs><linearGradient id="equityFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#00c853" stopOpacity={0.2} /><stop offset="100%" stopColor="#00c853" stopOpacity={0.015} /></linearGradient></defs>
+                <CartesianGrid stroke="#e4eaf2" strokeDasharray="3 5" vertical={false} />
+                <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fill: '#53627a', fontSize: 11 }} tickFormatter={chartDateLabel} minTickGap={44} />
+                <YAxis domain={showIndicatorComparison ? ['dataMin - 5', 'dataMax + 5'] : [(value: number) => Math.max(0, Math.floor(value * 0.96)), (value: number) => Math.ceil(value * 1.04)]} tickLine={false} axisLine={false} tick={{ fill: '#53627a', fontSize: 11 }} tickFormatter={value => showIndicatorComparison ? value.toFixed(0) : formatMoney(value, result?.market)} width={74} />
+                <Tooltip labelFormatter={label => chartDateLabel(String(label))} contentStyle={{ background: '#fff', border: '1px solid #d7dfeb', borderRadius: 8, color: '#142744', boxShadow: '0 12px 32px rgb(20 39 68 / 12%)' }} itemStyle={{ color: '#142744' }} labelStyle={{ color: '#53627a', marginBottom: 6 }} formatter={(value: number) => showIndicatorComparison ? `${value.toFixed(2)} endeks` : formatMoney(value, result?.market)} />
                 {showIndicatorComparison ? <>
-                  <ReferenceLine y={100} stroke="#687a70" strokeDasharray="5 5" />
-                  <Line type="monotone" dataKey="priceIndex" name="Hisse fiyatı · 100 baz" stroke="#f3eee0" strokeWidth={2.5} dot={false} connectNulls />
+                  <ReferenceLine y={100} stroke="#92a0b5" strokeDasharray="5 5" />
+                  <Line type="monotone" dataKey="priceIndex" name="Hisse fiyatı · 100 baz" stroke="#175cff" strokeWidth={2.5} dot={false} connectNulls />
                   {(result?.indicator_lines ?? []).map((line, index) => <Line key={line.key} type="monotone" dataKey={line.key} name={line.name} stroke={indicatorPalette[index % indicatorPalette.length]} strokeWidth={2} dot={false} connectNulls />)}
                 </> : <>
-                  <Area type="monotone" dataKey="equity" stroke="#70d6b3" strokeWidth={2.5} fill="url(#equityFill)" name="Strateji portföyü" dot={false} activeDot={{ r: 4, fill: '#70d6b3', stroke: '#0b100e', strokeWidth: 2 }} />
-                  <Line type="monotone" dataKey="benchmark" stroke="#f2b96f" strokeWidth={2} strokeDasharray="6 5" dot={false} activeDot={{ r: 4, fill: '#f2b96f', stroke: '#0b100e', strokeWidth: 2 }} name="Al-tut karşılaştırması" />
+                  <Area type="monotone" dataKey="equity" stroke="#00c853" strokeWidth={2.5} fill="url(#equityFill)" name="Strateji portföyü" dot={false} activeDot={{ r: 4, fill: '#00c853', stroke: '#fff', strokeWidth: 2 }} />
+                  <Line type="monotone" dataKey="benchmark" stroke="#ffab00" strokeWidth={2} strokeDasharray="6 5" dot={false} activeDot={{ r: 4, fill: '#ffab00', stroke: '#fff', strokeWidth: 2 }} name="Al-tut karşılaştırması" />
                 </>}
               </ComposedChart>
             </ResponsiveContainer> : <p className="empty-chart">Simülasyonu çalıştırınca strateji ve al-tut sonuçları burada görünür.</p>}
@@ -770,7 +770,7 @@ function App() {
               <MetricCard label="TABAN ÇİZGİSİ" value={forecast.beats_baseline ? 'Model daha düşük hata' : 'Basit tahmin daha düşük hata'} detail={`Model MAE ${forecast.validation_mae_pct.toFixed(2)}% · taban ${forecast.baseline_mae_pct.toFixed(2)}%`} />
             </section>
             {!forecast.beats_baseline && <p className="forecast-warning" role="status">Bu dönemde model, değişim yok varsayımından daha düşük hata üretmedi. Tahmini temkinli yorumlayın.</p>}
-            <section className="chart-card"><div className="chart-head"><div><h2>Fiyat geçmişi ve model tahmini</h2><p>Doğrulama verisi model eğitiminde kullanılmadı</p></div></div><div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={[...forecast.history.map(point => ({ date: point.date, close: point.close })), { date: `+${forecast.horizon} işlem günü`, forecast: forecast.predicted_close, lower: forecast.lower_close, upper: forecast.upper_close }]} margin={{ top: 16, right: 10, bottom: 0, left: 2 }}><CartesianGrid stroke="#dedfd7" vertical={false} /><XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fill: '#56635e', fontSize: 11 }} minTickGap={44} /><YAxis tickLine={false} axisLine={false} tick={{ fill: '#56635e', fontSize: 11 }} tickFormatter={value => formatMoney(value, forecast.market)} width={74} domain={['auto','auto']} /><Tooltip formatter={(value: number) => formatMoney(value, forecast.market)} /><Line dataKey="close" name="Kapanış" stroke="#176b56" dot={false} connectNulls /><Line dataKey="forecast" name="Model tahmini" stroke="#bf713a" strokeWidth={2} strokeDasharray="5 4" /><Line dataKey="lower" name="Alt hata sınırı" stroke="#bf713a" strokeDasharray="2 4" dot={false} /><Line dataKey="upper" name="Üst hata sınırı" stroke="#bf713a" strokeDasharray="2 4" dot={false} /></ComposedChart></ResponsiveContainer></div><div className="chart-foot"><span>{forecast.as_of} son gözlem</span><span>{forecast.horizon} işlem günü ileri tahmin · {forecast.source}</span></div></section>
+            <section className="chart-card"><div className="chart-head"><div><h2>Fiyat geçmişi ve model tahmini</h2><p>Doğrulama verisi model eğitiminde kullanılmadı</p></div></div><div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={[...forecast.history.map(point => ({ date: point.date, close: point.close })), { date: `+${forecast.horizon} işlem günü`, forecast: forecast.predicted_close, lower: forecast.lower_close, upper: forecast.upper_close }]} margin={{ top: 16, right: 10, bottom: 0, left: 2 }}><CartesianGrid stroke="#e4eaf2" vertical={false} /><XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fill: '#53627a', fontSize: 11 }} minTickGap={44} /><YAxis tickLine={false} axisLine={false} tick={{ fill: '#53627a', fontSize: 11 }} tickFormatter={value => formatMoney(value, forecast.market)} width={74} domain={['auto','auto']} /><Tooltip formatter={(value: number) => formatMoney(value, forecast.market)} contentStyle={{ background: '#fff', border: '1px solid #d7dfeb', borderRadius: 8, color: '#142744', boxShadow: '0 12px 32px rgb(20 39 68 / 12%)' }} itemStyle={{ color: '#142744' }} labelStyle={{ color: '#53627a' }} /><Line dataKey="close" name="Kapanış" stroke="#00a6fb" strokeWidth={2.5} dot={false} connectNulls /><Line dataKey="forecast" name="Model tahmini" stroke="#e600ff" strokeWidth={2.5} strokeDasharray="5 4" /><Line dataKey="lower" name="Alt hata sınırı" stroke="#e600ff" strokeDasharray="2 4" dot={false} /><Line dataKey="upper" name="Üst hata sınırı" stroke="#e600ff" strokeDasharray="2 4" dot={false} /></ComposedChart></ResponsiveContainer></div><div className="chart-foot"><span>{forecast.as_of} son gözlem</span><span>{forecast.horizon} işlem günü ileri tahmin · {forecast.source}</span></div></section>
             <p className="forecast-note">Tahmin geçmiş örüntülerden üretilen istatistiksel bir tahmindir. Hata aralığı geçmiş doğrulama hatalarını özetler, gelecekteki sonucu garanti etmez.</p>
           </> : <p className="forecast-empty">Bir BIST hisse kodu ve tahmin ufku seçip geçmiş veriyi çalıştırın.</p>}
         </>}
