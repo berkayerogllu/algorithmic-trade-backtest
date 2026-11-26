@@ -87,6 +87,19 @@ portföy, hisse fiyatı, performans metrikleri ve işlem günlüğü yer alır.
 THYAO verisi repo içinde bulunur. Diğer BIST hisseleri Yahoo Finance üzerinden
 indirilir. Portu değiştirmek için `--port` kullanın.
 
+Backtest için günlük, haftalık veya aylık bar seçilebilir; gösterge dönemleri
+seçilen sıklığa göre bar sayısıdır. SMA, EMA, RSI, MACD, Bollinger Bands,
+Stochastic Oscillator ve Donchian Channel tek başına kullanılabilir. Birleşik
+stratejide en az iki gösterge seçip AND, OR veya çoğunluk oyu kuralı
+uygulanabilir. Hazır tarih aralıkları 1 aydan 20 yıla kadar uzanır; kesin
+başlangıç ve bitiş tarihleri elle de girilebilir.
+
+Zarar durdur ve kâr al eşikleri yüzde olarak değiştirilebilir; sonuç özetinde
+kullanılan değerler gösterilir ve kaydedilen backtest ile birlikte saklanır.
+Fiyat + indikatör grafiği kapanışı ve seçili stratejinin tüm çizgilerini aynı
+100 bazlı karşılaştırma ekseninde, farklı renklerle gösterir. RSI/Stochastic
+50 değeri, MACD sıfır değeri bu eksende 100'e karşılık gelir.
+
 Tahmin araştırması günlük fiyat, momentum, trend, oynaklık ve hacim özellikleri
 üzerinde ridge regresyonu kullanır. Son tarihsel bölüm kronolojik doğrulama için
 ayrılır. Eğitim satırları tahmin ufku kadar geriye çekilerek hedef sızıntısı

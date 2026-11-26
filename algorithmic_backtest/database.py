@@ -67,7 +67,7 @@ def upsert_stock_universe(symbols: list[dict[str, str]]) -> None:
     if not symbols:
         return
     with _connect() as connection:
-        connection.executemany(
+        connection.cursor().executemany(
             """insert into app_data.stock_universe (market, symbol, company_name, exchange, source)
                values (%(market)s, %(symbol)s, %(name)s, %(exchange)s, 'yahoo_finance')
                on conflict (market, symbol) do update

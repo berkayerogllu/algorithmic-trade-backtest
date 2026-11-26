@@ -2,7 +2,16 @@
 
 from .base import BaseStrategy
 from .buy_and_hold import BuyAndHoldStrategy
-from .indicators import MACDStrategy, RSIStrategy, SMACrossoverStrategy
+from .combined import CombinedStrategy
+from .indicators import (
+    BollingerBandsStrategy,
+    DonchianChannelStrategy,
+    EMACrossoverStrategy,
+    MACDStrategy,
+    RSIStrategy,
+    SMACrossoverStrategy,
+    StochasticOscillatorStrategy,
+)
 
 __all__ = [
     "BaseStrategy",
@@ -10,5 +19,10 @@ __all__ = [
     "SMACrossoverStrategy",
     "RSIStrategy",
     "MACDStrategy",
+    "EMACrossoverStrategy",
+    "BollingerBandsStrategy",
+    "StochasticOscillatorStrategy",
+    "DonchianChannelStrategy",
+    "CombinedStrategy",
 ]
 

@@ -22,10 +22,21 @@ from . import database
 from .performance import PerformanceAnalyzer
 from .forecasting import HistoricalReturnForecaster
 from .risk_manager import RiskManager
-from .strategies import BuyAndHoldStrategy, MACDStrategy, RSIStrategy, SMACrossoverStrategy
+from .strategies import (
+    BollingerBandsStrategy,
+    BuyAndHoldStrategy,
+    CombinedStrategy,
+    DonchianChannelStrategy,
+    EMACrossoverStrategy,
+    MACDStrategy,
+    RSIStrategy,
+    SMACrossoverStrategy,
+    StochasticOscillatorStrategy,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 Market = Literal["BIST", "US"]
+Interval = Literal["1d", "1wk", "1mo"]
 _SYMBOL_SEARCH_CACHE: dict[tuple[str, str], tuple[float, list[dict[str, str]]]] = {}
 app = FastAPI(title="BIST Backtest API", version="0.1.0")
 app.add_middleware(
@@ -36,13 +47,26 @@ app.add_middleware(
 )
 
 
+class StrategyComponent(BaseModel):
+    strategy: Literal[
+        "SMA Crossover", "EMA Crossover", "RSI", "MACD", "Bollinger Bands",
+        "Stochastic Oscillator", "Donchian Channel",
+    ]
+    parameters: dict[str, int] = Field(default_factory=dict)
+
+
 class BacktestRequest(BaseModel):
     symbol: str = Field(min_length=1, max_length=20)
     market: Market = "BIST"
     strategy: str
+    interval: Interval = "1d"
+    components: list[StrategyComponent] = Field(default_factory=list)
+    combination_method: Literal["AND", "OR", "MAJORITY"] = "AND"
     initial_cash: float = Field(gt=0)
     commission_rate: float = Field(ge=0, lt=1)
     risk_enabled: bool = True
+    stop_loss_pct: float = Field(default=5.0, gt=0, lt=100)
+    take_profit_pct: float = Field(default=10.0, gt=0, lt=100)
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     parameters: dict[str, int] = Field(default_factory=dict)
@@ -84,7 +108,10 @@ def save_backtest_history(request: SavedBacktestRequest) -> dict[str, Any]:
     if (
         not isinstance(result.get("symbol"), str)
         or result.get("market") not in ("BIST", "US")
-        or result.get("strategy") not in ("SMA Crossover", "RSI", "MACD", "Buy & Hold")
+        or result.get("strategy") not in (
+            "SMA Crossover", "EMA Crossover", "RSI", "MACD", "Bollinger Bands",
+            "Stochastic Oscillator", "Donchian Channel", "Buy & Hold", "Combined",
+        )
         or not isinstance(result.get("metrics"), dict)
         or not isinstance(result.get("points"), list)
         or not isinstance(result.get("trades"), list)
@@ -219,43 +246,82 @@ def run_backtest(request: BacktestRequest) -> dict:
         raise HTTPException(422, "Bitiş tarihi başlangıçtan önce veya bugünden sonra olamaz.")
 
     try:
-        strategy = _strategy_for(request.strategy, request.parameters)
+        strategy = _strategy_for(
+            request.strategy,
+            request.parameters,
+            request.components,
+            request.combination_method,
+        )
+        loader = DataLoader()
         if request.market == "BIST" and symbol == "THYAO.IS":
-            data = DataLoader().load_csv(PROJECT_ROOT / "data" / "THYAO.IS.csv")
+            data = loader.load_csv(PROJECT_ROOT / "data" / "THYAO.IS.csv")
+            data = loader.resample(data, request.interval)
             source = "Yahoo Finance · Yerel THYAO arşivi"
         else:
             download_end = (end + timedelta(days=1)).isoformat() if end else None
-            data = DataLoader().download_yfinance(symbol, start.isoformat(), download_end)
+            data = loader.download_yfinance(symbol, start.isoformat(), download_end, request.interval)
             source = "Yahoo Finance · İndirilen tarihsel veri"
         dates = pd.DatetimeIndex(data.index).date
         data = data[dates >= start]
         if end:
             data = data[pd.DatetimeIndex(data.index).date <= end]
-        minimum = {
-            "SMA Crossover": lambda: strategy.slow_period + 1,
-            "RSI": lambda: strategy.period + 2,
-            "MACD": lambda: strategy.slow_period + strategy.signal_period,
-            "Buy & Hold": lambda: 2,
-        }[request.strategy]()
+        interval_names = {"1d": "günlük", "1wk": "haftalık", "1mo": "aylık"}
+        if request.strategy == "Combined":
+            minimum = max(_minimum_bars(component.strategy, component.parameters) for component in request.components)
+        else:
+            minimum = _minimum_bars(request.strategy, request.parameters)
         if len(data) < minimum:
-            raise ValueError(f"Bu strateji için en az {minimum} işlem günü gerekli. Tarih aralığını genişletin.")
-        risk = RiskManager() if request.risk_enabled else None
+            raise ValueError(
+                f"Bu ayarlar için en az {minimum} {interval_names[request.interval]} veri barı gerekli. "
+                "Tarih aralığını genişletin veya indikatör dönemlerini kısaltın."
+            )
+        risk = (
+            RiskManager(
+                stop_loss_pct=request.stop_loss_pct / 100,
+                take_profit_pct=request.take_profit_pct / 100,
+            )
+            if request.risk_enabled
+            else None
+        )
         results = BacktestEngine(request.initial_cash, request.commission_rate, risk).run(data, strategy)
-        metrics = PerformanceAnalyzer().analyze(results)
+        periods_per_year = {"1d": 252, "1wk": 52, "1mo": 12}[request.interval]
+        metrics = PerformanceAnalyzer(periods_per_year=periods_per_year).analyze(results)
     except (ValueError, KeyError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Veri veya backtest hatası: {exc}") from exc
 
     first_close = float(data["Close"].iloc[0])
+    strategy_instances = strategy.strategies if isinstance(strategy, CombinedStrategy) else (strategy,)
+    indicator_lines: list[dict[str, str]] = []
+    indicator_values: dict[str, pd.Series] = {}
+    component_names = (
+        [component.strategy for component in request.components]
+        if request.strategy == "Combined"
+        else [request.strategy]
+    )
+    for component_index, component in enumerate(strategy_instances):
+        plot_series = getattr(component, "plot_series", None)
+        if plot_series is None:
+            continue
+        for series_name, (kind, values) in plot_series(data).items():
+            key = f"indicator_{component_index}_{len(indicator_lines)}"
+            line_name = f"{component_names[component_index]} · {series_name}" if request.strategy == "Combined" else series_name
+            indicator_lines.append({"key": key, "name": line_name, "kind": kind})
+            indicator_values[key] = values
+
     points = [
         {
-            "date": pd.Timestamp(index).strftime("%Y-%m-%d"),
+            "date": pd.Timestamp(row_date).strftime("%Y-%m-%d"),
             "price": float(row["Close"]),
             "equity": float(row["Equity"]),
             "benchmark": float(request.initial_cash * row["Close"] / first_close),
+            "indicators": {
+                key: (float(values.iloc[row_index]) if pd.notna(values.iloc[row_index]) else None)
+                for key, values in indicator_values.items()
+            },
         }
-        for index, row in results.iterrows()
+        for row_index, (row_date, row) in enumerate(results.iterrows())
     ]
     trades = [
         {
@@ -272,8 +338,15 @@ def run_backtest(request: BacktestRequest) -> dict:
         "symbol": symbol,
         "market": request.market,
         "strategy": request.strategy,
+        "interval": request.interval,
+        "components": [component.model_dump() if hasattr(component, "model_dump") else component.dict() for component in request.components],
+        "combination_method": request.combination_method if request.strategy == "Combined" else None,
         "source": source,
         "parameters": request.parameters,
+        "risk_enabled": request.risk_enabled,
+        "stop_loss_pct": request.stop_loss_pct,
+        "take_profit_pct": request.take_profit_pct,
+        "indicator_lines": indicator_lines,
         "period": f"{date.fromisoformat(points[0]['date']).strftime('%d.%m.%Y')} — {date.fromisoformat(points[-1]['date']).strftime('%d.%m.%Y')}",
         "metrics": metrics,
         "points": points,
@@ -320,14 +393,48 @@ def forecast(request: ForecastRequest) -> dict:
     return {"symbol": symbol, "market": request.market, "source": source, "history": history, **result}
 
 
-def _strategy_for(name: str, parameters: dict[str, int]):
+def _strategy_for(
+    name: str,
+    parameters: dict[str, int],
+    components: list[StrategyComponent] | None = None,
+    combination_method: str = "AND",
+):
     strategies = {
         "SMA Crossover": SMACrossoverStrategy,
+        "EMA Crossover": EMACrossoverStrategy,
         "RSI": RSIStrategy,
         "MACD": MACDStrategy,
+        "Bollinger Bands": BollingerBandsStrategy,
+        "Stochastic Oscillator": StochasticOscillatorStrategy,
+        "Donchian Channel": DonchianChannelStrategy,
         "Buy & Hold": BuyAndHoldStrategy,
     }
     try:
+        if name == "Combined":
+            selected = components or []
+            if len(selected) < 2:
+                raise ValueError("Birleşik strateji için en az iki indikatör seçin.")
+            component_strategies = [strategies[item.strategy](**item.parameters) for item in selected]
+            return CombinedStrategy(component_strategies, combination_method)
+        if components:
+            raise ValueError("Bileşen listesi yalnızca birleşik stratejide kullanılabilir.")
         return strategies[name](**parameters)
     except (KeyError, TypeError) as exc:
+        raise ValueError("Strateji veya parametreleri geçersiz.") from exc
+
+
+def _minimum_bars(name: str, parameters: dict[str, int]) -> int:
+    requirements = {
+        "SMA Crossover": lambda: parameters.get("slow_period", 50) + 1,
+        "EMA Crossover": lambda: parameters.get("slow_period", 26) + 1,
+        "RSI": lambda: parameters.get("period", 14) + 2,
+        "MACD": lambda: parameters.get("slow_period", 26) + parameters.get("signal_period", 9),
+        "Bollinger Bands": lambda: parameters.get("period", 20) + 1,
+        "Stochastic Oscillator": lambda: parameters.get("k_period", 14) + parameters.get("d_period", 3) + 1,
+        "Donchian Channel": lambda: parameters.get("period", 20) + 1,
+        "Buy & Hold": lambda: 2,
+    }
+    try:
+        return requirements[name]()
+    except KeyError as exc:
         raise ValueError("Strateji veya parametreleri geçersiz.") from exc

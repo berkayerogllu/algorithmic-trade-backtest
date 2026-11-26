@@ -13,6 +13,27 @@ class DataLoader:
     """Load OHLCV data and prepare chronological data partitions."""
 
     REQUIRED_COLUMNS = ("Open", "High", "Low", "Close", "Volume")
+    INTERVALS = {"1d": None, "1wk": "W-FRI", "1mo": pd.offsets.MonthEnd()}
+
+    def resample(self, data: pd.DataFrame, interval: str) -> pd.DataFrame:
+        """Convert daily OHLCV bars into supported weekly or monthly bars."""
+        if interval not in self.INTERVALS:
+            raise ValueError("interval must be one of: 1d, 1wk, 1mo")
+        rule = self.INTERVALS[interval]
+        if rule is None:
+            return data.copy()
+        if data.empty:
+            raise BacktestError("Cannot resample empty market data")
+        aggregated = data.resample(rule).agg(
+            {
+                "Open": "first",
+                "High": "max",
+                "Low": "min",
+                "Close": "last",
+                "Volume": "sum",
+            }
+        )
+        return aggregated.dropna(subset=["Open", "High", "Low", "Close"])
 
     def load_csv(self, path: str | Path) -> pd.DataFrame:
         """Load a CSV file, normalize its index, and validate OHLCV columns."""
@@ -41,8 +62,11 @@ class DataLoader:
         ticker: str,
         start: str,
         end: str | None = None,
+        interval: str = "1d",
     ) -> pd.DataFrame:
-        """Download daily market data from Yahoo Finance (e.g. THYAO.IS)."""
+        """Download daily, weekly, or monthly market data from Yahoo Finance."""
+        if interval not in self.INTERVALS:
+            raise ValueError("interval must be one of: 1d, 1wk, 1mo")
         try:
             import yfinance as yf
         except ImportError as exc:
@@ -55,7 +79,7 @@ class DataLoader:
                 ticker,
                 start=start,
                 end=end,
-                interval="1d",
+                interval=interval,
                 auto_adjust=True,
                 progress=False,
             )

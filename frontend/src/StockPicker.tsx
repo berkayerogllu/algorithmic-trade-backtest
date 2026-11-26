@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, LoaderCircle, Search } from 'lucide-react';
 import { defaultSymbols, Market, StockSymbol } from './stockSymbols';
 
@@ -14,6 +14,7 @@ const normalize = (value: string) => value.trim().toUpperCase().replace(/\.IS$/,
 const symbolForCode = (code: string, market: Market) => market === 'BIST' ? `${code}.IS` : code;
 
 export function StockPicker({ value, market, onChange, onMarketChange }: Props) {
+  const searchRegion = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [query, setQuery] = useState(normalize(value));
@@ -29,6 +30,14 @@ export function StockPicker({ value, market, onChange, onMarketChange }: Props) 
 
   useEffect(() => setActiveIndex(0), [market, query]);
   useEffect(() => setQuery(normalize(value)), [value]);
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (searchRegion.current && !searchRegion.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    return () => document.removeEventListener('pointerdown', closeOnOutsideClick);
+  }, [open]);
 
   useEffect(() => {
     if (!open) {
@@ -103,6 +112,7 @@ export function StockPicker({ value, market, onChange, onMarketChange }: Props) 
         <span>Amerika</span><small>NYSE · Nasdaq</small>
       </button>
     </div>
+    <div className="stock-picker-search" ref={searchRegion}>
     <div className="stock-picker-control">
       <Search size={17} aria-hidden="true" />
       <input
@@ -114,7 +124,7 @@ export function StockPicker({ value, market, onChange, onMarketChange }: Props) 
         aria-activedescendant={open && results[activeIndex] ? `stock-option-${results[activeIndex].symbol.replace(/[^a-zA-Z0-9_-]/g, '-')}` : undefined}
         autoComplete="off"
         maxLength={60}
-        placeholder={market === 'BIST' ? 'Sembol veya şirket adı' : 'ABD sembolü veya şirket adı'}
+        placeholder="Hisse kodu veya şirket adı"
         value={query}
         onFocus={() => setOpen(true)}
         onChange={event => {
@@ -146,7 +156,7 @@ export function StockPicker({ value, market, onChange, onMarketChange }: Props) 
       </button>}
     </div>
     {open && <div className="stock-picker-menu">
-      <div className="picker-caption">{query.trim() ? 'Katalog arama sonuçları' : market === 'BIST' ? 'BIST hisseleri' : 'ABD hisseleri'}</div>
+      <div className="picker-caption">{query.trim() ? 'Arama sonuçları' : 'Hisse kataloğu'}</div>
       <div id="stock-picker-options" className="stock-picker-options" role="listbox" aria-label={`${market === 'BIST' ? 'BIST' : 'ABD'} hisse arama sonuçları`}>
         {results.map((stock, index) => <button
           type="button"
@@ -164,14 +174,15 @@ export function StockPicker({ value, market, onChange, onMarketChange }: Props) 
           <span className="stock-exchange-tag">{stock.exchange}</span>
           {value === stock.symbol && <Check size={16} aria-hidden="true" />}
         </button>)}
-        {!results.length && !searching && (!canUseCustom || !query.trim()) && <p className="picker-empty">Sonuç yok. Sembolü kontrol edip tekrar arayın.</p>}
+        {!results.length && !searching && (!canUseCustom || !query.trim()) && <p className="picker-empty">{query.trim() ? 'Eşleşme bulunamadı. Kodu kontrol edin veya şirket adını deneyin.' : 'Katalogda hisse bulmak için kod ya da şirket adı yazın.'}</p>}
       </div>
       {searchError && <p className="picker-search-error" role="status">{searchError}</p>}
       {!results.length && !searching && canUseCustom && query.trim() && <button type="button" className="custom-symbol" onMouseDown={event => event.preventDefault()} onClick={chooseCustom}>
         <span><strong>{customCode}</strong> sembolünü kullan</span><span className="custom-symbol-hint">{market === 'BIST' ? 'Borsa İstanbul · .IS' : 'ABD · Yahoo Finance'}</span>
       </button>}
-      <p className="picker-footnote">Hisse listesi Supabase kataloğundan gelir. Yeni bulunan eşleşmeler kataloğa eklenir.</p>
+      <p className="picker-footnote">Sembol veya şirket adıyla arayın; Türkiye ve ABD piyasaları arasında seçim yapabilirsiniz.</p>
     </div>}
+    </div>
     <span className="picker-selected">Seçili: <strong>{selected ? `${selected.code} · ${selected.name}` : value || 'Hisse seçin'}</strong></span>
   </div>;
 }
