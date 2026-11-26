@@ -143,6 +143,17 @@ def save_backtest_history(request: SavedBacktestRequest) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="Backtest Supabase'e kaydedilemedi.") from exc
 
 
+@app.get("/api/history/{run_id}")
+def get_backtest_history_item(run_id: UUID) -> dict[str, Any]:
+    try:
+        run = database.get_saved_backtest(run_id)
+    except (psycopg.Error, RuntimeError) as exc:
+        raise HTTPException(status_code=503, detail="Supabase test geçmişine ulaşılamıyor.") from exc
+    if run is None:
+        raise HTTPException(status_code=404, detail="Kayıt bulunamadı.")
+    return run
+
+
 @app.delete("/api/history/{run_id}", status_code=204)
 def delete_backtest_history(run_id: UUID) -> None:
     try:

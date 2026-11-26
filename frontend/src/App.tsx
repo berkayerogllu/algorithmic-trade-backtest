@@ -17,6 +17,7 @@ type Interval = '1d' | '1wk' | '1mo';
 type IndicatorLine = { key: string; name: string; kind: 'price' | 'oscillator' | 'spread' };
 type BacktestResponse = { points: Point[]; trades: Trade[]; metrics: Metrics; strategy: Strategy; symbol: string; market?: Market; period: string; source: string; parameters: Record<string, number>; interval?: Interval; components?: StrategyComponent[]; combination_method?: CombinationMethod | null; risk_enabled?: boolean; stop_loss_pct?: number; take_profit_pct?: number; indicator_lines?: IndicatorLine[]; risk_effect?: RiskEffect; indicator_effects?: IndicatorEffect[] };
 type BacktestRun = { id: string; savedAt: string; result: BacktestResponse };
+type BacktestHistorySummary = { id: string; savedAt: string; symbol: string; market: Market; strategy: Strategy; period: string; interval?: Interval; metrics: Metrics };
 type ForecastResponse = { symbol: string; market?: Market; source: string; as_of: string; last_close: number; predicted_return: number; predicted_close: number; lower_close: number; upper_close: number; horizon: number; validation_mae_pct: number; baseline_mae_pct: number; directional_accuracy: number; validation_samples: number; beats_baseline: boolean; history: { date: string; close: number }[] };
 type ResearchMetrics = Metrics & { final_value: number };
 type ResearchSplit = 'optimization' | 'validation' | 'test';
@@ -115,10 +116,11 @@ function App() {
   const initialPage = new URLSearchParams(window.location.search).get('page');
   const [page, setPage] = useState<'dashboard' | 'simulations' | 'history'>(() => initialPage === 'simulations' ? 'simulations' : initialPage === 'history' ? 'history' : 'dashboard');
   const [market, setMarket] = useState<Market>('BIST');
-  const [history, setHistory] = useState<BacktestRun[]>([]);
+  const [history, setHistory] = useState<BacktestHistorySummary[]>([]);
   const [historyQuery, setHistoryQuery] = useState('');
   const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
-  const [historyBusy, setHistoryBusy] = useState(true);
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState('');
   const [strategy, setStrategy] = useState<Strategy>('SMA Crossover');
   const [selectedComponents, setSelectedComponents] = useState<IndicatorStrategy[]>(['SMA Crossover', 'RSI']);
@@ -176,7 +178,7 @@ function App() {
   const filteredHistory = useMemo(() => {
     const query = historyQuery.trim().toLocaleLowerCase('tr-TR');
     if (!query) return history;
-    return history.filter(run => `${run.result.symbol} ${run.result.strategy} ${run.result.period}`.toLocaleLowerCase('tr-TR').includes(query));
+    return history.filter(run => `${run.symbol} ${run.strategy} ${run.period}`.toLocaleLowerCase('tr-TR').includes(query));
   }, [history, historyQuery]);
   const analyzedIndicators: StrategyComponent[] = result
     ? result.strategy === 'Combined'
@@ -212,12 +214,12 @@ function App() {
     let cancelled = false;
     fetch('/api/history').then(async response => {
       if (!response.ok) throw new Error('Supabase test geçmişine ulaşılamıyor.');
-      return await response.json() as BacktestRun[];
+      return await response.json() as BacktestHistorySummary[];
     }).then(savedRuns => {
       if (!cancelled) { setHistory(savedRuns); setHistoryError(''); }
     }).catch(e => {
       if (!cancelled) setHistoryError(e instanceof Error ? e.message : 'Test geçmişi yüklenemedi.');
-    }).finally(() => { if (!cancelled) setHistoryBusy(false); });
+    }).finally(() => { if (!cancelled) setHistoryLoading(false); });
     return () => { cancelled = true; };
   }, []);
   const runBacktest = async () => {
@@ -253,16 +255,25 @@ function App() {
     setDatePeriod(id);
   };
 
-  const openBacktestRun = (run: BacktestRun) => {
-    setResult(run.result);
-    setActiveHistoryId(run.id);
-    navigatePage('backtest');
-    setError('');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+  const openBacktestRun = async (run: BacktestHistorySummary) => {
+    setHistoryBusy(true); setHistoryError('');
+    try {
+      const response = await fetch(`/api/history/${run.id}`);
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(typeof body?.detail === 'string' ? body.detail : 'Kayıtlı backtest açılamadı.');
+      const savedRun = body as BacktestRun;
+      setResult(savedRun.result);
+      setActiveHistoryId(savedRun.id);
+      navigatePage('backtest');
+      setError('');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (e) {
+      setHistoryError(e instanceof Error ? e.message : 'Kayıtlı backtest açılamadı.');
+    } finally { setHistoryBusy(false); }
   };
 
   const saveCurrentBacktest = async () => {
-    if (!result || activeHistoryId || historyBusy) return;
+    if (!result || activeHistoryId || historyBusy || historyLoading) return;
     setHistoryBusy(true); setHistoryError('');
     try {
       const response = await fetch('/api/history', {
@@ -272,7 +283,16 @@ function App() {
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(typeof body?.detail === 'string' ? body.detail : 'Backtest Supabase’e kaydedilemedi.');
       const run = body as BacktestRun;
-      setHistory(current => [run, ...current].slice(0, 10));
+      setHistory(current => [{
+        id: run.id,
+        savedAt: run.savedAt,
+        symbol: run.result.symbol,
+        market: run.result.market ?? market,
+        strategy: run.result.strategy,
+        period: run.result.period,
+        interval: run.result.interval,
+        metrics: run.result.metrics,
+      }, ...current]);
       setActiveHistoryId(run.id);
     } catch (e) {
       setHistoryError(e instanceof Error ? e.message : 'Backtest Supabase’e kaydedilemedi.');
@@ -386,7 +406,7 @@ function App() {
         <button type="button" className={`page-nav-button nav-backtest ${page === 'dashboard' && mode === 'backtest' ? 'active' : ''}`} aria-current={page === 'dashboard' && mode === 'backtest' ? 'page' : undefined} onClick={() => navigatePage('backtest')}>Strateji testi</button>
         <button type="button" className={`page-nav-button nav-forecast ${page === 'dashboard' && mode === 'forecast' ? 'active' : ''}`} aria-current={page === 'dashboard' && mode === 'forecast' ? 'page' : undefined} onClick={() => navigatePage('forecast')}>Fiyat tahmini</button>
         <button type="button" className={`page-nav-button nav-random ${page === 'simulations' ? 'active' : ''}`} aria-current={page === 'simulations' ? 'page' : undefined} onClick={() => navigatePage('simulations')}>Rastgele araştırma</button>
-        <button type="button" className={`page-nav-button nav-history ${page === 'history' ? 'active' : ''}`} aria-current={page === 'history' ? 'page' : undefined} onClick={() => navigatePage('history')}>Kayıtlı testler <span className="nav-count">{history.length}</span></button>
+        <button type="button" className={`page-nav-button nav-history ${page === 'history' ? 'active' : ''}`} aria-current={page === 'history' ? 'page' : undefined} onClick={() => navigatePage('history')}>Kayıtlı testler <span className="nav-count">{historyLoading ? '…' : history.length}</span></button>
       </nav>
       <span className={`connection ${apiOnline ? 'is-online' : 'is-offline'}`}><i aria-hidden="true" />API {apiOnline ? 'bağlı' : 'çevrimdışı'} · DB {databaseOnline ? 'bağlı' : 'kapalı'}</span>
     </header>
@@ -500,7 +520,8 @@ function App() {
           {error && <div className="error-message" role="alert">{error}</div>}
         </form>
 
-        <div className="results-heading"><div><div className="section-title"><h2>Performans özeti</h2><span className="period-badge">{result?.period}</span></div><p>{result ? `${result.symbol} · ${strategyDisplayName(result.strategy)} · ${chartData.length.toLocaleString('tr-TR')} ${intervalLabels[result.interval ?? '1d'].toLocaleLowerCase('tr-TR')} bar` : 'Henüz bir simülasyon çalıştırılmadı.'}</p>{result && <p className="result-parameters">{strategyParameterSummary(result)}{result.risk_enabled === undefined ? '' : result.risk_enabled ? ` · Risk çıkışları açık · SL %${result.stop_loss_pct ?? 5} / TP %${result.take_profit_pct ?? 10}` : ' · Risk çıkışları kapalı'}</p>}</div><div className="result-actions">{result && <button className="export-button" disabled={Boolean(activeHistoryId) || historyBusy || !databaseOnline} onClick={saveCurrentBacktest}><Save size={15} />{activeHistoryId ? 'Geçmişte kayıtlı' : historyBusy ? 'Kaydediliyor…' : 'Geçmişe kaydet'}</button>}<button className="export-button" disabled={!result} onClick={() => result && downloadCsv(result)}><Download size={15} /> CSV indir</button></div></div>
+        <div className="results-heading"><div><div className="section-title"><h2>Performans özeti</h2><span className="period-badge">{result?.period}</span></div><p>{result ? `${result.symbol} · ${strategyDisplayName(result.strategy)} · ${chartData.length.toLocaleString('tr-TR')} ${intervalLabels[result.interval ?? '1d'].toLocaleLowerCase('tr-TR')} bar` : 'Henüz bir simülasyon çalıştırılmadı.'}</p>{result && <p className="result-parameters">{strategyParameterSummary(result)}{result.risk_enabled === undefined ? '' : result.risk_enabled ? ` · Risk çıkışları açık · SL %${result.stop_loss_pct ?? 5} / TP %${result.take_profit_pct ?? 10}` : ' · Risk çıkışları kapalı'}</p>}</div><div className="result-actions">{result && <button className="export-button" disabled={Boolean(activeHistoryId) || historyBusy || historyLoading || !databaseOnline} onClick={saveCurrentBacktest}><Save size={15} />{activeHistoryId ? 'Geçmişte kayıtlı' : historyBusy ? 'İşleniyor…' : historyLoading ? 'Kayıtlar yükleniyor…' : 'Geçmişe kaydet'}</button>}<button className="export-button" disabled={!result} onClick={() => result && downloadCsv(result)}><Download size={15} /> CSV indir</button></div></div>
+        {historyError && <div className="error-message" role="alert">Kayıt geçmişi: {historyError}</div>}
 
         <section className="metric-grid" aria-label="Performans metrikleri">
           <MetricCard label="Toplam getiri" value={metrics ? formatPercent(metrics.total_return) : '—'} detail={metrics ? `${formatMoney(chartData[chartData.length - 1].equity, result?.market)} portföy değeri` : 'Başlangıçtan bugüne'} trend={metrics ? metrics.total_return >= 0 : null} />
@@ -643,27 +664,27 @@ function App() {
           <section className="history-section history-page-section" aria-labelledby="history-heading">
             <div className="history-heading">
               <div>
-                <div className="history-title-line"><h2 id="history-heading">Backtest arşivi</h2><span className="history-count">{history.length} / 10 kayıt</span></div>
+                <div className="history-title-line"><h2 id="history-heading">Backtest arşivi</h2><span className="history-count">{history.length} kayıt</span></div>
                 <p>Rastgele araştırma raporları bu arşive eklenmez; onlar kendi sayfasında yerel olarak tutulur.</p>
               </div>
               {history.length > 0 && <div className="history-tools">
                 <label className="history-search"><span className="sr-only">Test geçmişinde ara</span><input value={historyQuery} onChange={event => setHistoryQuery(event.target.value)} placeholder="Hisse veya strateji ara" /></label>
-                <button type="button" className="history-clear" onClick={clearBacktestHistory}>Geçmişi temizle</button>
+                <button type="button" className="history-clear" disabled={historyBusy} onClick={clearBacktestHistory}>Geçmişi temizle</button>
               </div>}
             </div>
             {historyError && <div className="error-message" role="alert">{historyError}</div>}
             {filteredHistory.length ? <div className="history-list">
               {filteredHistory.map(run => <div className="history-row" key={run.id}>
-                <button type="button" className={`history-item ${run.id === activeHistoryId ? 'active' : ''}`} aria-pressed={run.id === activeHistoryId} onClick={() => openBacktestRun(run)}>
-                  <span className="history-run-info"><strong>{run.result.symbol}</strong><span>{strategyDisplayName(run.result.strategy)}</span><small>{run.result.period} · {intervalLabels[run.result.interval ?? '1d']} · {new Intl.DateTimeFormat('tr-TR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(run.savedAt))}</small></span>
-                  <span className={`history-metric ${run.result.metrics.total_return >= 0 ? 'positive' : 'pnl-negative'}`}><small>Toplam getiri</small><strong>{formatPercent(run.result.metrics.total_return)}</strong></span>
-                  <span className="history-metric"><small>Sharpe</small><strong>{run.result.metrics.sharpe_ratio.toFixed(2)}</strong></span>
-                  <span className="history-metric"><small>Azami düşüş</small><strong>{formatPercent(run.result.metrics.max_drawdown)}</strong></span>
-                  <span className="history-trades">{run.result.metrics.closed_trades} işlem <span aria-hidden="true">· Aç</span></span>
+                <button type="button" className={`history-item ${run.id === activeHistoryId ? 'active' : ''}`} aria-pressed={run.id === activeHistoryId} disabled={historyBusy} onClick={() => openBacktestRun(run)}>
+                  <span className="history-run-info"><strong>{run.symbol}</strong><span>{strategyDisplayName(run.strategy)}</span><small>{run.period} · {intervalLabels[run.interval ?? '1d']} · {new Intl.DateTimeFormat('tr-TR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(run.savedAt))}</small></span>
+                  <span className={`history-metric ${run.metrics.total_return >= 0 ? 'positive' : 'pnl-negative'}`}><small>Toplam getiri</small><strong>{formatPercent(run.metrics.total_return)}</strong></span>
+                  <span className="history-metric"><small>Sharpe</small><strong>{run.metrics.sharpe_ratio.toFixed(2)}</strong></span>
+                  <span className="history-metric"><small>Azami düşüş</small><strong>{formatPercent(run.metrics.max_drawdown)}</strong></span>
+                  <span className="history-trades">{run.metrics.closed_trades} işlem <span aria-hidden="true">· Aç</span></span>
                 </button>
-                <button type="button" className="history-remove" aria-label={`${run.result.symbol} ${run.result.strategy} kaydını sil`} title="Bu kaydı sil" onClick={() => removeBacktestRun(run.id)}><Trash2 size={16} aria-hidden="true" /></button>
+                <button type="button" className="history-remove" disabled={historyBusy} aria-label={`${run.symbol} ${run.strategy} kaydını sil`} title="Bu kaydı sil" onClick={() => removeBacktestRun(run.id)}><Trash2 size={16} aria-hidden="true" /></button>
               </div>)}
-            </div> : <div className="history-empty">{historyBusy ? 'Supabase test geçmişi yükleniyor…' : history.length ? 'Bu aramayla eşleşen test yok.' : 'Henüz kaydedilmiş test yok. Bir backtest çalıştırıp saklamak istediğiniz sonucu “Geçmişe kaydet” ile ekleyin.'}</div>}
+            </div> : <div className="history-empty">{historyLoading ? 'Supabase test geçmişi yükleniyor…' : historyError ? 'Test geçmişi yüklenemedi. Bağlantıyı kontrol edip sayfayı yenileyin.' : history.length ? 'Bu aramayla eşleşen test yok.' : 'Henüz kaydedilmiş test yok. Bir backtest çalıştırıp “Geçmişe kaydet” düğmesine basın; kayıt burada görünür.'}</div>}
           </section>
         </>}
         {page === 'simulations' && <>

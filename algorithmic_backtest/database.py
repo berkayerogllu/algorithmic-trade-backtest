@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 from uuid import UUID, uuid4
 
 import psycopg
@@ -79,19 +79,42 @@ def upsert_stock_universe(symbols: list[dict[str, str]]) -> None:
         )
 
 
-def list_saved_backtests(limit: int = 10) -> list[dict[str, Any]]:
+def list_saved_backtests() -> list[dict[str, Any]]:
     with _connect() as connection:
         rows = connection.execute(
-            """select id, saved_at, result
+            """select id, saved_at, symbol, market, strategy,
+                      result->>'period' as period,
+                      result->>'interval' as interval,
+                      result->'metrics' as metrics
                from app_data.backtest_history
-               order by saved_at desc, id desc
-               limit %s""",
-            (limit,),
+               order by saved_at desc, id desc""",
         ).fetchall()
     return [
-        {"id": str(row["id"]), "savedAt": row["saved_at"].isoformat(), "result": row["result"]}
+        {
+            "id": str(row["id"]),
+            "savedAt": row["saved_at"].isoformat(),
+            "symbol": row["symbol"],
+            "market": row["market"],
+            "strategy": row["strategy"],
+            "period": row["period"],
+            "interval": row["interval"],
+            "metrics": row["metrics"],
+        }
         for row in rows
     ]
+
+
+def get_saved_backtest(run_id: UUID) -> Optional[dict[str, Any]]:
+    with _connect() as connection:
+        row = connection.execute(
+            """select id, saved_at, result
+               from app_data.backtest_history
+               where id = %s""",
+            (run_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    return {"id": str(row["id"]), "savedAt": row["saved_at"].isoformat(), "result": row["result"]}
 
 
 def save_backtest(result: dict[str, Any]) -> dict[str, Any]:
@@ -103,14 +126,6 @@ def save_backtest(result: dict[str, Any]) -> dict[str, Any]:
                returning id, saved_at, result""",
             (run_id, result["symbol"], result["market"], result["strategy"], Jsonb(result)),
         ).fetchone()
-        connection.execute(
-            """delete from app_data.backtest_history
-               where id not in (
-                   select id from app_data.backtest_history
-                   order by saved_at desc, id desc
-                   limit 10
-               )"""
-        )
     return {"id": str(row["id"]), "savedAt": row["saved_at"].isoformat(), "result": row["result"]}
 
 

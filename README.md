@@ -64,9 +64,11 @@ python -m pip install .
 Supabase bağlantısı için repo kökünde `.env.example` dosyasını `.env` olarak
 kopyalayın ve `DATABASE_URL` değerini Supabase Session pooler bilgileriyle
 doldurun. `.env` Git tarafından yok sayılır; parolayı kaynak koda veya frontend
-ayarlarına koymayın. Uygulama yalnızca **Geçmişe kaydet** ile gönderilen son 10
-backtesti özel `app_data.backtest_history` tablosunda tutar. Eski tarayıcı
-geçmişi Supabase’e aktarılmaz.
+ayarlarına koymayın. Uygulama yalnızca **Geçmişe kaydet** düğmesiyle gönderilen
+backtestleri özel `app_data.backtest_history` tablosunda tutar; kayıt sayısı
+sınırlı değildir. Arşiv listesi küçük özetleri yükler, tam grafik ve işlem
+verisini bir kayıt açıldığında getirir. Eski tarayıcı geçmişi Supabase’e
+aktarılmaz.
 
 Hisse seçimi, aynı Supabase projesindeki `app_data.stock_universe` kataloğunu
 kullanır. Katalog KAP’ın BIST pazar listesi ve Nasdaq Trader’ın Nasdaq/NYSE
