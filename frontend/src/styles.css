@@ -56,8 +56,10 @@ button, input, select { font: inherit; }
 .market-switch { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; gap: 3px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-muted); }
 .market-switch button { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 36px; padding: 5px 9px; border: 0; border-radius: 4px; color: var(--muted); background: transparent; font-size: .83rem; font-weight: 620; }
 .market-switch button small { color: inherit; opacity: .78; font-size: .68rem; font-weight: 500; white-space: nowrap; }
-.market-switch button.selected { color: #08110d; background: var(--accent); }
+.market-switch button.selected { border-color: var(--accent); color: #fff; background: var(--accent); }
+.market-switch button.selected:hover { border-color: var(--accent-strong); color: #fff; background: var(--accent-strong); }
 .market-switch button:hover:not(.selected) { color: var(--ink); background: var(--surface-hover); }
+.market-switch button:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--accent); outline-offset: 2px; }
 .stock-picker-control { display: flex; align-items: center; gap: 8px; min-height: 44px; padding-inline: 11px 4px; border: 1px solid var(--line-strong); border-radius: 6px; color: var(--muted); background: var(--paper); }
 .stock-picker-control:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; border-color: var(--accent); }
 .stock-picker-control input { min-width: 0; width: 100%; min-height: 40px; padding: 7px 0; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: .95rem; }
@@ -487,6 +489,7 @@ html, body, .app-shell { background: var(--canvas); }
 .error-message { border-color: #efc4c8; color: #8f1e2a; background: var(--danger-surface); }
 .run-button { border-color: var(--accent); color: #fff; background: var(--accent); font-weight: 750; }
 .run-button:hover:not(:disabled) { border-color: var(--accent-strong); background: var(--accent-strong); }
+.run-button:disabled { border-color: #d7deea; color: #6d7b8f; background: #e8edf3; opacity: 1; }
 .export-button:hover:not(:disabled), .history-clear:hover:not(:disabled) { border-color: var(--accent); color: var(--ink); background: var(--accent-soft); }
 .app-footer { border-color: var(--line); }
 button { transition: color 140ms ease, background-color 140ms ease, border-color 140ms ease; }
