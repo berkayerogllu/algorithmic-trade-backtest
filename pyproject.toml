@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "algorithmic-backtest"
 version = "0.1.0"
 description = "Educational algorithmic trading and backtesting simulator"
-requires-python = ">=3.11"
+requires-python = ">=3.9"
 dependencies = [
     "numpy>=1.22",
     "pandas>=2.0",
@@ -19,4 +19,7 @@ dependencies = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+include = ["algorithmic_backtest*"]
 

@@ -6,7 +6,7 @@
 | İnceleme tarihi | 26 Kasım 2026 |
 | İncelenen kaynak | `SEN 4015_Term Project.pdf` ve repodaki mevcut kod |
 
-**Sonuç:** Çalışan bir prototip ve dersin teknik hedeflerinin çoğunu karşılayan çekirdek mevcut. Teslim edilebilir kapsamlı teknik rapor, literatür analizi, Python sürüm uyumu ve uçtan uca out-of-sample optimizasyon akışı tamamlanmalı.
+**Sonuç:** Çalışan bir prototip ve dersin teknik hedeflerinin çoğunu karşılayan çekirdek mevcut. Proje Python sürüm alt sınırı, yerel ortamla tutarlı olacak şekilde 3.9 olarak tanımlandı; paket kurulumu sırasında repo dışı klasörlerin Python paketi sanılmasına yol açan keşif ayarı da düzeltildi. Teslim edilebilir kapsamlı teknik rapor, literatür analizi ve uçtan uca out-of-sample optimizasyon akışı tamamlanmalı.
 
 ## 1. Yönetici özeti
 
@@ -14,7 +14,7 @@ Uygulama yerel ortamda `http://127.0.0.1:8765/` adresinde açıldı. FastAPI sa�
 
 Kod tabanında dört strateji, nesne yönelimli motor, risk kuralları, performans metrikleri, sıralı ve süreç tabanlı optimizasyon, kronolojik veri bölme, FastAPI ve React/TypeScript arayüzü bulunuyor. Yerel doğrulamada 35 Python testi geçti ve frontend üretim derlemesi başarılı oldu.
 
-En önemli uygulama riski ortam uyumudur: `pyproject.toml` Python 3.11 veya üstünü istiyor, fakat bu makinedeki `.venv` Python 3.9.6. Mevcut uygulama/testler bu ortamda çalışmış olsa da desteklenen Python sürümünde doğrulanmış sayılmaz. Ayrıca optimizasyon fonksiyonu kendisine verilen veri üzerinde çalışır; test kümesinin optimizasyona verilmesini kod düzeyinde engellemez. Kronolojik bölme yardımcı işlevi var, fakat optimizasyon, validasyon ve nihai test değerlendirmesini güvenli biçimde birleştiren bir akış bulunmuyor.
+Proje Python alt sınırı `pyproject.toml` içinde `>=3.9` olarak tanımlandı; yerel `.venv` Python 3.9.6 olduğundan mevcut geliştirme ortamıyla uyumlu. Setuptools paket keşfi yalnızca `algorithmic_backtest` paketini kapsayacak şekilde sınırlandı; böylece repo kökündeki `data`, `frontend`, `output` ve `supabase` klasörlerinin paket kurulumunu bozması önlendi. Bu sürümde kurulum, testler ve yerel uygulama doğrulandı. Ayrıca optimizasyon fonksiyonu kendisine verilen veri üzerinde çalışır; test kümesinin optimizasyona verilmesini kod düzeyinde engellemez. Kronolojik bölme yardımcı işlevi var, fakat optimizasyon, validasyon ve nihai test değerlendirmesini güvenli biçimde birleştiren bir akış bulunmuyor.
 
 ## 2. Yerel çalıştırma ve kontrol sonuçları
 
@@ -27,7 +27,7 @@ En önemli uygulama riski ortam uyumudur: `pyproject.toml` Python 3.11 veya üst
 | Backtest geçmişi | Beklenen durum | `/api/history` boş. Sonuçlar yalnızca kullanıcı “Geçmişe kaydet” dediğinde kaydediliyor. |
 | Python testleri | Başarılı | `.venv/bin/python -m pytest -q`: **35 geçti**. |
 | Frontend üretim derlemesi | Başarılı | `npm run build` tamamlandı; Vite büyük bundle için uyarı verdi. |
-| Python çalışma sürümü | Uyumsuz | Yerel `.venv`: 3.9.6; proje tanımı: `>=3.11`. |
+| Python çalışma sürümü ve paket kurulumu | Uyumlu | Yerel `.venv`: 3.9.6; proje alt sınırı: `>=3.9`; setuptools paket keşfi açıkça yapılandırıldı. |
 
 Uygulama şu anda yerel sunucu oturumunda çalışıyor. README’de belirtilen başlatma komutu:
 
@@ -87,7 +87,7 @@ Motorun long/flat (uzun pozisyon/nakit) modeli açığa satış veya çoklu eşz
 
 ## 6. Öncelikli tamamlanacak işler
 
-1. Geliştirme ortamını Python 3.11+ ile yeniden kurup testleri ve yerel uygulamayı aynı sürümde tekrar doğrulayın.
+1. CI’da Python 3.9 ve güncel bir Python sürümünde test matrisi çalıştırın.
 2. Optimizasyon, validasyon ve test akışını ayrı API/servis adımlarıyla kurun. Parametreyi yalnızca optimizasyon bölümünde seçin; validasyonla karar verin; test bölümünü seçilen ayarlar sabitlendikten sonra bir kez ölçün.
 3. Aynı veri, başlangıç sermayesi, komisyon ve strateji ızgarasında sıralı/paralel süre ve sonuç eşitliğini raporlayın.
 4. Risk açık/kapalı senaryolarını aynı dönem ve aynı strateji parametreleriyle karşılaştırın; metrikleri ve işlem sayısını tabloya alın.

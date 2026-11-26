@@ -54,11 +54,11 @@ top level of an importable module when using `n_jobs` greater than one.
 
 ## Yerel backtest uygulaması
 
-İlk kurulum için Python 3.11+ ile Node.js ve npm gerekir. Repo kökünde
+İlk kurulum için Python 3.9+ ile Node.js ve npm gerekir. Repo kökünde
 Python bağımlılıklarını kurun:
 
 ```bash
-python -m pip install -e .
+python -m pip install .
 ```
 
 Supabase bağlantısı için repo kökünde `.env.example` dosyasını `.env` olarak
@@ -100,7 +100,7 @@ The interface is a React and TypeScript application backed by the Python
 simulation engine. Start the API and frontend in separate terminals:
 
 ```bash
-python -m pip install -e .
+python -m pip install .
 python -m uvicorn algorithmic_backtest.api:app --reload
 cd frontend && npm install && npm run dev
 ```
