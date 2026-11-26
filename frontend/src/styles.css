@@ -113,9 +113,13 @@ button, input, select { font: inherit; }
 .research-table td:first-child small { margin-top:5px; color:var(--muted); font-size:.7rem; line-height:1.5; }
 .research-table td:not(:first-child),.research-table th:not(:first-child) { text-align:right; }
 .research-table tbody tr:first-child { background:var(--accent-soft); }
-.simulation-page-heading { padding-bottom:20px; }
+.simulation-page-heading { display:flex; align-items:flex-end; justify-content:space-between; gap:20px; padding-bottom:20px; }
 .simulation-page-heading h1 { font-size:clamp(2rem,4vw,3.1rem); }
 .simulation-page-heading p { max-width:68ch; }
+.report-jump { display:inline-flex; flex:none; align-items:center; justify-content:center; gap:8px; min-height:42px; margin-bottom:3px; padding:9px 14px; border:1px solid #65c9ff; border-radius:8px; color:#071a27; background:#65c9ff; font-size:.84rem; font-weight:720; }
+.report-jump:hover { border-color:#a5e0ff; background:#a5e0ff; }
+.research-results-heading { scroll-margin-top:24px; }
+.research-results-heading:focus { outline:2px solid #65c9ff; outline-offset:5px; }
 .simulation-history-section { margin-top:22px; padding:20px 22px; border:1px solid var(--line); border-radius:10px; background:var(--paper); }
 .simulation-history-section .card-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .simulation-history-list { margin-top:12px; border-top:1px solid var(--line); }
@@ -476,5 +480,7 @@ button:active:not(:disabled) { filter: brightness(.92); }
   .connection { font-size: .66rem; }
   .content { width: calc(100% - 28px); }
   .page-heading { padding-top: 34px; }
+  .simulation-page-heading { align-items:flex-start; flex-direction:column; gap:14px; }
+  .report-jump { min-height:40px; }
   .run-panel, .chart-card, .history-page-section { padding: 16px; }
 }

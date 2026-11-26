@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer,
   ReferenceLine, Tooltip, XAxis, YAxis,
 } from 'recharts';
-import { Download, Save, Trash2 } from 'lucide-react';
+import { ArrowDown, Download, Save, Trash2 } from 'lucide-react';
 import { StockPicker } from './StockPicker';
 import { Market } from './stockSymbols';
 
@@ -150,6 +150,11 @@ function App() {
   const [researchIndicators, setResearchIndicators] = useState<IndicatorStrategy[]>([...Object.keys(strategyPresets) as IndicatorStrategy[]]);
   const [researchIterations, setResearchIterations] = useState(30);
   const [researchSeed, setResearchSeed] = useState('4015');
+  const researchResultsRef = useRef<HTMLDivElement>(null);
+
+  const scrollToResearchResults = () => {
+    window.requestAnimationFrame(() => researchResultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
 
   const chartData = useMemo(() => result?.points ?? [], [result]);
   const indicatorChartData = useMemo(() => {
@@ -328,6 +333,7 @@ function App() {
       setRandomResearch(report);
       setActiveResearchId(savedReport.id);
       setResearchHistory(current => [savedReport, ...current.filter(item => item.id !== savedReport.id)].slice(0, 15));
+      scrollToResearchResults();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Araştırma sunucusuna ulaşılamadı.');
     } finally { setBusy(false); }
@@ -364,6 +370,7 @@ function App() {
   const openResearchReport = (item: ResearchHistoryItem) => {
     setRandomResearch(item.result);
     setActiveResearchId(item.id);
+    scrollToResearchResults();
   };
 
   const metrics = result?.metrics;
@@ -657,8 +664,10 @@ function App() {
         </>}
         {page === 'simulations' && <>
           <header className="page-heading simulation-page-heading">
-            <h1>Simülasyon geçmişleri</h1>
-            <p>Hisse bazında rastgele indikatör birleşimleri üretin, sonuçları karşılaştırın ve önceki araştırma raporlarını yeniden açın.</p>
+            <div><h1>Simülasyon geçmişleri</h1>
+              <p>Hisse bazında rastgele indikatör birleşimleri üretin, sonuçları karşılaştırın ve önceki araştırma raporlarını yeniden açın.</p>
+            </div>
+            {randomResearch && <button type="button" className="report-jump" onClick={scrollToResearchResults}>Son raporu görüntüle <ArrowDown size={16} aria-hidden="true" /></button>}
           </header>
           <form className="run-panel" onSubmit={event => { event.preventDefault(); void runRandomResearch(); }}>
             <h2>Rastgele indikatör karşılaştırması</h2>
@@ -698,7 +707,7 @@ function App() {
             </button>)}</div> : <p className="simulation-history-empty">Henüz araştırma yok. Hisseyi ve tarih aralığını seçip rastgele kombinasyonları çalıştırdığınızda rapor burada saklanır.</p>}
           </section>
           {randomResearch ? <>
-            <div className="results-heading research-results-heading"><div><h2>{randomResearch.symbol} · strateji araştırma raporu</h2><p>{randomResearch.period} · {intervalLabels[randomResearch.interval]} · {randomResearch.source} · tohum {randomResearch.seed ?? 'rastgele'}</p></div><button type="button" className="export-button" onClick={exportRandomResearch}><Download size={16} /> CSV raporunu indir</button></div>
+            <div className="results-heading research-results-heading" id="research-results" ref={researchResultsRef} tabIndex={-1}><div><h2>{randomResearch.symbol} · strateji araştırma raporu</h2><p>{randomResearch.period} · {intervalLabels[randomResearch.interval]} · {randomResearch.source} · tohum {randomResearch.seed ?? 'rastgele'}</p></div><button type="button" className="export-button" onClick={exportRandomResearch}><Download size={16} /> CSV raporunu indir</button></div>
             <section className="metric-grid research-metrics">
               <MetricCard label="TEST EDİLEN" value={String(randomResearch.evaluated_iterations)} detail={`${randomResearch.requested_iterations} istenen · ${randomResearch.candidates.length} benzersiz aday`} />
               <MetricCard label="KEŞİFTE İLK SIRA" value={formatPercent(randomResearch.candidates[0].metrics.optimization.total_return)} detail={randomResearch.candidates[0].label} trend={randomResearch.candidates[0].metrics.optimization.total_return >= 0} />
