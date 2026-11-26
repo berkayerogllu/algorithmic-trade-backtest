@@ -375,6 +375,10 @@ function App() {
 
   const metrics = result?.metrics;
   const riskEffect = result?.risk_effect;
+  const leadingResearchCandidate = randomResearch?.candidates[0];
+  const leadingTestDelta = leadingResearchCandidate
+    ? leadingResearchCandidate.metrics.test.total_return - randomResearch!.baseline.test.total_return
+    : 0;
   return <div className="app-shell">
     <header className="topbar">
       <a href="#terminal" className="brand">piyasa.lab</a>
@@ -709,16 +713,39 @@ function App() {
           {randomResearch ? <>
             <div className="results-heading research-results-heading" id="research-results" ref={researchResultsRef} tabIndex={-1}><div><h2>{randomResearch.symbol} · strateji araştırma raporu</h2><p>{randomResearch.period} · {intervalLabels[randomResearch.interval]} · {randomResearch.source} · tohum {randomResearch.seed ?? 'rastgele'}</p></div><button type="button" className="export-button" onClick={exportRandomResearch}><Download size={16} /> CSV raporunu indir</button></div>
             <section className="metric-grid research-metrics">
-              <MetricCard label="TEST EDİLEN" value={String(randomResearch.evaluated_iterations)} detail={`${randomResearch.requested_iterations} istenen · ${randomResearch.candidates.length} benzersiz aday`} />
-              <MetricCard label="KEŞİFTE İLK SIRA" value={formatPercent(randomResearch.candidates[0].metrics.optimization.total_return)} detail={randomResearch.candidates[0].label} trend={randomResearch.candidates[0].metrics.optimization.total_return >= 0} />
-              <MetricCard label="İLK SIRANIN TEST GETİRİSİ" value={formatPercent(randomResearch.candidates[0].metrics.test.total_return)} detail="Seçim dışı son dönem · temkinli değerlendirin" trend={randomResearch.candidates[0].metrics.test.total_return >= 0} />
-              <MetricCard label="AL-TUT · TEST" value={formatPercent(randomResearch.baseline.test.total_return)} detail={`${formatMoney(randomResearch.baseline.test.final_value, randomResearch.market)} dönem sonu`} trend={randomResearch.baseline.test.total_return >= 0} />
+              <MetricCard label="ADAY SAYISI" value={String(randomResearch.evaluated_iterations)} detail={`${randomResearch.requested_iterations} istendi · ${randomResearch.candidates.length} farklı kombinasyon`} />
+              <MetricCard label="KEŞİFTE LİDER GETİRİ" value={formatPercent(randomResearch.candidates[0].metrics.optimization.total_return)} detail="Aday sıralamasında kullanılan sonuç" trend={randomResearch.candidates[0].metrics.optimization.total_return >= 0} />
+              <MetricCard label="LİDER ADAY · TEST" value={formatPercent(randomResearch.candidates[0].metrics.test.total_return)} detail="Daha önce seçime katılmayan son dönem" trend={randomResearch.candidates[0].metrics.test.total_return >= 0} />
+              <MetricCard label="AL-TUT · TEST" value={formatPercent(randomResearch.baseline.test.total_return)} detail="Aynı hisse ve test dönemi · stratejisiz" trend={randomResearch.baseline.test.total_return >= 0} />
             </section>
+            <section className="research-guide" aria-labelledby="research-guide-heading">
+              <div className="research-guide-heading"><h2 id="research-guide-heading">Bu raporu nasıl okuyun?</h2><p>“Test”, yazılım testi değil; stratejinin en yeni ve seçim dışında tutulan tarihsel veri bölümüdür.</p></div>
+              <dl className="research-guide-splits">
+                <div><dt>Keşif · ilk %60</dt><dd>En eski dönemdir. Adaylar bu bölümdeki getiriye göre sıralanır; eşitlikte Sharpe oranı kullanılır.</dd></div>
+                <div><dt>Doğrulama · sonraki %20</dt><dd>Keşifte öne çıkan yöntemin sonraki dönemde nasıl davrandığını gösterir. Sıralamayı değiştirmez.</dd></div>
+                <div><dt>Test · son %20</dt><dd>En yeni dönemdir. Aday seçerken kullanılmaz; daha önce seçilmemiş verideki sonucu gösterir.</dd></div>
+              </dl>
+              <p className="research-guide-note">Getiri, o bölümün başındaki sermayeye göre dönem sonundaki değişimdir. Her bölüm başlangıç sermayesiyle ayrı simüle edilir; komisyon ve seçtiğiniz risk kuralları uygulanır.</p>
+            </section>
+            {leadingResearchCandidate && <section className="research-indicator-explainer" aria-labelledby="research-indicator-heading">
+              <div className="research-guide-heading"><h2 id="research-indicator-heading">Keşifte ilk sıradaki adayın indikatörleri</h2><p>{leadingResearchCandidate.label} · sıralama keşif getirisine dayanıyor.</p></div>
+              <ul className="research-indicator-list">{leadingResearchCandidate.components.map(component => <li key={component.strategy}>
+                <div><strong>{component.strategy}</strong><p>{strategyOptions.find(option => option.name === component.strategy)?.summary}</p></div>
+                <small>{indicatorParameterSummary(component)}</small>
+              </li>)}</ul>
+              <p className="research-guide-note"><strong>Birleşim kuralı: {leadingResearchCandidate.combination_method}.</strong> {combinationDescriptions[leadingResearchCandidate.combination_method]}</p>
+            </section>}
+            <div className="research-vs" aria-label="Lider strateji ve al-tut test karşılaştırması">
+              <div><span>Lider aday · test getirisi</span><strong className={randomResearch.candidates[0].metrics.test.total_return >= 0 ? 'positive' : 'pnl-negative'}>{formatPercent(randomResearch.candidates[0].metrics.test.total_return)}</strong></div>
+              <span className="research-vs-mark" aria-hidden="true">karşı</span>
+              <div><span>Al-tut · aynı test dönemi</span><strong className={randomResearch.baseline.test.total_return >= 0 ? 'positive' : 'pnl-negative'}>{formatPercent(randomResearch.baseline.test.total_return)}</strong></div>
+              <div className="research-vs-difference"><span>Getiri farkı</span><strong className={leadingTestDelta >= 0 ? 'positive' : 'pnl-negative'}>{formatPercentagePoints(leadingTestDelta)} puan</strong><small>{leadingTestDelta >= 0 ? 'Lider aday bu dönemde al-tutun üzerinde.' : 'Lider aday bu dönemde al-tutun altında.'}</small></div>
+            </div>
             <section className="impact-card research-report">
-              <div className="card-heading"><div><h2>Aday performans tablosu</h2><p>Adaylar yalnızca keşif getirisine göre sıralı. Test sütunu sıralamayı etkilemez.</p></div></div>
+              <div className="card-heading"><div><h2>Tüm adayların sonuçları</h2><p>Keşif getirisi ilk sıralamayı belirler. Doğrulama ve test sonuçları bu sırayı değiştirmez.</p></div></div>
               <div className="research-splits"><span>Keşif <strong>{randomResearch.split_bars.optimization} bar · %60</strong></span><span>Doğrulama <strong>{randomResearch.split_bars.validation} bar · %20</strong></span><span>Test <strong>{randomResearch.split_bars.test} bar · %20</strong></span><span>Risk <strong>{randomResearch.risk_enabled ? `Açık · SL ${randomResearch.stop_loss_pct}% / TP ${randomResearch.take_profit_pct}%` : 'Kapalı'}</strong></span></div>
-              <div className="table-scroll research-table-wrap"><table className="research-table"><thead><tr><th>Sıra · rastgele kombinasyon</th><th>Keşif getirisi</th><th>Doğrulama getirisi</th><th>Test getirisi</th><th>Test max düşüş</th><th>Test kazanma</th><th>Test işlem</th><th>Test son değer</th></tr></thead><tbody>{randomResearch.candidates.map(candidate => <tr key={candidate.rank}><td><strong>#{candidate.rank} · {candidate.label}</strong><small>{candidate.components.map(item => `${item.strategy}: ${indicatorParameterSummary(item)}`).join(' / ')}</small></td><td className={candidate.metrics.optimization.total_return >= 0 ? 'pnl-positive' : 'pnl-negative'}>{formatPercent(candidate.metrics.optimization.total_return)}</td><td className={candidate.metrics.validation.total_return >= 0 ? 'pnl-positive' : 'pnl-negative'}>{formatPercent(candidate.metrics.validation.total_return)}</td><td className={candidate.metrics.test.total_return >= 0 ? 'pnl-positive' : 'pnl-negative'}>{formatPercent(candidate.metrics.test.total_return)}</td><td className="pnl-negative">{formatPercent(candidate.metrics.test.max_drawdown)}</td><td>{formatPercent(candidate.metrics.test.win_rate)}</td><td>{candidate.metrics.test.closed_trades}</td><td>{formatMoney(candidate.metrics.test.final_value, randomResearch.market)}</td></tr>)}</tbody></table></div>
-              <p className="impact-footnote">{randomResearch.selection_rule} Al-tut karşılaştırması her bölümde aynı sermaye ve komisyonla ayrı simüle edilir. Geçmiş sonuçlar gelecek performansını garanti etmez.</p>
+              <div className="table-scroll research-table-wrap"><table className="research-table"><thead><tr><th>Sıra · rastgele kombinasyon</th><th><span>Keşif · %60</span><small>Aday seçimi</small></th><th><span>Doğrulama · %20</span><small>Sonraki dönem</small></th><th><span>Test · %20</span><small>Seçim dışı dönem</small></th><th><span>Testte azami düşüş</span><small>Zirveden en sert gerileme</small></th><th><span>Kârlı işlem oranı</span><small>Test dönemindeki işlemler</small></th><th>İşlem sayısı</th><th>Test son portföy</th></tr></thead><tbody>{randomResearch.candidates.map(candidate => <tr key={candidate.rank}><td><strong>#{candidate.rank} · {candidate.label}</strong><small>{candidate.components.map(item => `${item.strategy}: ${indicatorParameterSummary(item)}`).join(' / ')}</small></td><td className={candidate.metrics.optimization.total_return >= 0 ? 'pnl-positive' : 'pnl-negative'}>{formatPercent(candidate.metrics.optimization.total_return)}</td><td className={candidate.metrics.validation.total_return >= 0 ? 'pnl-positive' : 'pnl-negative'}>{formatPercent(candidate.metrics.validation.total_return)}</td><td className={candidate.metrics.test.total_return >= 0 ? 'pnl-positive' : 'pnl-negative'}>{formatPercent(candidate.metrics.test.total_return)}</td><td className="pnl-negative">{formatPercent(candidate.metrics.test.max_drawdown)}</td><td>{formatPercent(candidate.metrics.test.win_rate)}</td><td>{candidate.metrics.test.closed_trades}</td><td>{formatMoney(candidate.metrics.test.final_value, randomResearch.market)}</td></tr>)}</tbody></table></div>
+              <p className="impact-footnote">Getiri farkı, lider adayın test getirisi eksi al-tut test getirisidir; yüzde puan olarak gösterilir. Sonuçlar geçmiş döneme aittir ve geleceği garanti etmez.</p>
             </section>
           </> : <p className="forecast-empty">Bir hisse, tarih aralığı ve indikatör havuzu seçip araştırmayı başlatın. Sonuçlar bu ekranda raporlanır; otomatik olarak kayıt geçmişine eklenmez.</p>}
         </>}

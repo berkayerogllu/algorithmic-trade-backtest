@@ -100,6 +100,30 @@ button, input, select { font: inherit; }
 .research-metrics .metric-card { min-width:0; }
 .research-metrics .metric-card:nth-child(2) .metric-value,.research-metrics .metric-card:nth-child(3) .metric-value { font-size:1.2rem; }
 .research-metrics .metric-detail { overflow-wrap:anywhere; }
+.research-guide { margin-top:20px; padding:20px 0 18px; border-block:1px solid var(--line); }
+.research-guide-heading h2,.research-indicator-explainer h2 { color:var(--ink); font-size:1.12rem; letter-spacing:-.02em; }
+.research-guide-heading p { margin-top:5px; font-size:.85rem; }
+.research-guide-splits { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:22px; margin:18px 0 12px; }
+.research-guide-splits div { min-width:0; }
+.research-guide-splits dt { color:#65c9ff; font-size:.8rem; font-weight:740; }
+.research-guide-splits dd { margin:6px 0 0; color:var(--muted); font-size:.82rem; line-height:1.55; }
+.research-guide-note { margin-top:12px; padding-top:11px; border-top:1px solid var(--line); font-size:.8rem; }
+.research-indicator-explainer { margin-top:18px; padding:20px 22px; border:1px solid var(--line); border-radius:12px; background:var(--paper); }
+.research-indicator-list { list-style:none; margin:14px 0 0; padding:0; }
+.research-indicator-list li { display:grid; grid-template-columns:minmax(180px,.8fr) minmax(0,1.4fr); gap:18px; align-items:start; padding:12px 0; border-top:1px solid var(--line); }
+.research-indicator-list li > div { display:grid; gap:4px; }
+.research-indicator-list strong { color:var(--ink); font-size:.87rem; }
+.research-indicator-list p { font-size:.8rem; }
+.research-indicator-list small { color:var(--muted); font-size:.77rem; line-height:1.55; }
+.research-indicator-explainer .research-guide-note { margin-top:8px; }
+.research-indicator-explainer .research-guide-note strong { color:#c3a5ff; }
+.research-vs { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) minmax(190px,1.1fr); align-items:center; gap:16px; margin-top:18px; padding:16px 18px; border:1px solid #30364c; border-radius:12px; background:#121725; }
+.research-vs > div { display:grid; gap:5px; }
+.research-vs > div > span,.research-vs-difference small { color:var(--muted); font-size:.76rem; }
+.research-vs strong { font-size:1.12rem; font-variant-numeric:tabular-nums; }
+.research-vs-mark { color:#65c9ff; font-size:.72rem; font-weight:750; text-transform:uppercase; letter-spacing:.08em; }
+.research-vs-difference { padding-left:16px; border-left:1px solid var(--line-strong); }
+.research-vs-difference small { line-height:1.4; }
 .research-report { margin-top:18px; }
 .research-splits { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
 .research-splits span { display:grid; gap:4px; min-width:145px; padding:9px 11px; border:1px solid var(--line); border-radius:6px; color:var(--muted); font-size:.72rem; }
@@ -107,6 +131,7 @@ button, input, select { font: inherit; }
 .research-table-wrap { max-height:520px; }
 .research-table { min-width:1000px; }
 .research-table th { z-index:1; }
+.research-table th small { display:block; margin-top:4px; color:var(--muted); font-size:.66rem; font-weight:450; line-height:1.35; }
 .research-table td { font-size:.8rem; }
 .research-table td:first-child { min-width:270px; max-width:390px; white-space:normal; }
 .research-table td:first-child strong,.research-table td:first-child small { display:block; }
@@ -340,6 +365,11 @@ button:disabled { color: var(--muted); }
   .research-controls,.research-capital { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .research-indicators { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .research-results-heading { align-items:flex-start; }
+  .research-guide-splits { grid-template-columns:1fr; gap:14px; }
+  .research-vs { grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); gap:10px; }
+  .research-vs-difference { grid-column:1/-1; padding:12px 0 0; border-left:0; border-top:1px solid var(--line-strong); }
+  .research-indicator-explainer { padding:16px; }
+  .research-indicator-list li { grid-template-columns:1fr; gap:5px; }
   .simulation-history-item { grid-template-columns:minmax(0,1fr) minmax(120px,.7fr); gap:10px; }
   .simulation-history-main { grid-column:1/-1; }
   .simulation-history-open { grid-column:1/-1; }
