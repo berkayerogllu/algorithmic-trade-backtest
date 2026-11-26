@@ -112,7 +112,8 @@ const loadResearchHistory = (): ResearchHistoryItem[] => {
 };
 
 function App() {
-  const [page, setPage] = useState<'dashboard' | 'simulations'>(() => new URLSearchParams(window.location.search).get('page') === 'simulations' ? 'simulations' : 'dashboard');
+  const initialPage = new URLSearchParams(window.location.search).get('page');
+  const [page, setPage] = useState<'dashboard' | 'simulations' | 'history'>(() => initialPage === 'simulations' ? 'simulations' : initialPage === 'history' ? 'history' : 'dashboard');
   const [market, setMarket] = useState<Market>('BIST');
   const [history, setHistory] = useState<BacktestRun[]>([]);
   const [historyQuery, setHistoryQuery] = useState('');
@@ -124,7 +125,7 @@ function App() {
   const [componentParameters, setComponentParameters] = useState<Record<string, Record<string, string>>>({});
   const [combinationMethod, setCombinationMethod] = useState<CombinationMethod>('AND');
   const [interval, setInterval] = useState<Interval>('1d');
-  const [mode, setMode] = useState<'backtest' | 'forecast' | 'random'>(() => new URLSearchParams(window.location.search).get('page') === 'simulations' ? 'random' : 'backtest');
+  const [mode, setMode] = useState<'backtest' | 'forecast' | 'random'>(() => initialPage === 'simulations' ? 'random' : initialPage === 'forecast' ? 'forecast' : 'backtest');
   const [horizon, setHorizon] = useState(5);
   const [symbol, setSymbol] = useState('THYAO.IS');
   const [start, setStart] = useState(() => monthsAgoISO(36));
@@ -191,9 +192,9 @@ function App() {
   }, []);
   useEffect(() => {
     const handleNavigation = () => {
-      const isSimulationPage = new URLSearchParams(window.location.search).get('page') === 'simulations';
-      setPage(isSimulationPage ? 'simulations' : 'dashboard');
-      setMode(isSimulationPage ? 'random' : 'backtest');
+      const route = new URLSearchParams(window.location.search).get('page');
+      setPage(route === 'simulations' ? 'simulations' : route === 'history' ? 'history' : 'dashboard');
+      setMode(route === 'simulations' ? 'random' : route === 'forecast' ? 'forecast' : 'backtest');
       setError('');
     };
     window.addEventListener('popstate', handleNavigation);
@@ -250,7 +251,7 @@ function App() {
   const openBacktestRun = (run: BacktestRun) => {
     setResult(run.result);
     setActiveHistoryId(run.id);
-    setMode('backtest');
+    navigatePage('backtest');
     setError('');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -349,10 +350,11 @@ function App() {
     return [...current, name];
   });
 
-  const navigatePage = (nextPage: 'dashboard' | 'simulations') => {
-    const nextMode = nextPage === 'simulations' ? 'random' : 'backtest';
-    const nextUrl = nextPage === 'simulations' ? `${window.location.pathname}?page=simulations` : window.location.pathname;
-    window.history.pushState({ page: nextPage }, '', nextUrl);
+  const navigatePage = (route: 'backtest' | 'forecast' | 'simulations' | 'history') => {
+    const nextPage = route === 'simulations' ? 'simulations' : route === 'history' ? 'history' : 'dashboard';
+    const nextMode = route === 'simulations' ? 'random' : route === 'forecast' ? 'forecast' : 'backtest';
+    const nextUrl = route === 'backtest' ? window.location.pathname : `${window.location.pathname}?page=${route}`;
+    window.history.pushState({ page: route }, '', nextUrl);
     setPage(nextPage);
     setMode(nextMode);
     setError('');
@@ -369,19 +371,20 @@ function App() {
   return <div className="app-shell">
     <header className="topbar">
       <a href="#terminal" className="brand">piyasa.lab</a>
-      <span className="connection">Simülasyon · {apiOnline ? 'Bağlı' : 'Çevrimdışı'} · Supabase · {databaseOnline ? 'Bağlı' : 'Bağlantı yok'}</span>
-      <button type="button" className={`page-nav-button ${page === 'simulations' ? 'active' : ''}`} onClick={() => navigatePage(page === 'dashboard' ? 'simulations' : 'dashboard')}>{page === 'dashboard' ? 'Simülasyon geçmişleri' : 'Ana araştırma ekranı'}</button>
+      <nav className="primary-nav" aria-label="Araştırma araçları">
+        <button type="button" className={`page-nav-button nav-backtest ${page === 'dashboard' && mode === 'backtest' ? 'active' : ''}`} aria-current={page === 'dashboard' && mode === 'backtest' ? 'page' : undefined} onClick={() => navigatePage('backtest')}>Strateji testi</button>
+        <button type="button" className={`page-nav-button nav-forecast ${page === 'dashboard' && mode === 'forecast' ? 'active' : ''}`} aria-current={page === 'dashboard' && mode === 'forecast' ? 'page' : undefined} onClick={() => navigatePage('forecast')}>Fiyat tahmini</button>
+        <button type="button" className={`page-nav-button nav-random ${page === 'simulations' ? 'active' : ''}`} aria-current={page === 'simulations' ? 'page' : undefined} onClick={() => navigatePage('simulations')}>Rastgele araştırma</button>
+        <button type="button" className={`page-nav-button nav-history ${page === 'history' ? 'active' : ''}`} aria-current={page === 'history' ? 'page' : undefined} onClick={() => navigatePage('history')}>Kayıtlı testler <span className="nav-count">{history.length}</span></button>
+      </nav>
+      <span className={`connection ${apiOnline ? 'is-online' : 'is-offline'}`}><i aria-hidden="true" />API {apiOnline ? 'bağlı' : 'çevrimdışı'} · DB {databaseOnline ? 'bağlı' : 'kapalı'}</span>
     </header>
     <main id="terminal" className="content">
         {page === 'dashboard' && <header className="page-heading">
-          <h1>BIST &amp; ABD hisse araştırması</h1>
-          <p>İki piyasa için geçmiş veriyi inceleyin, stratejileri test edin ve tahmin performansını ölçün.</p>
+          <h1>{mode === 'forecast' ? 'Fiyat tahmini' : 'Strateji backtesti'}</h1>
+          <p>{mode === 'forecast' ? 'Geçmiş veriyi kronolojik olarak doğrulayın; tahmin ile basit baz çizgisini karşılaştırın.' : 'Hisse ve strateji seçin, risk kurallarını ayarlayın ve aynı dönem al-tut karşılaştırmasıyla sonucu inceleyin.'}</p>
         </header>}
 
-        {page === 'dashboard' && <div className="mode-tabs" role="tablist" aria-label="Analiz türü">
-          <button type="button" role="tab" aria-selected={mode === 'backtest'} className={mode === 'backtest' ? 'selected' : ''} onClick={() => { setMode('backtest'); setError(''); }}>Geriye dönük test</button>
-          <button type="button" role="tab" aria-selected={mode === 'forecast'} className={mode === 'forecast' ? 'selected' : ''} onClick={() => { setMode('forecast'); setError(''); }}>Tahmin araştırması</button>
-        </div>}
 
         {page === 'dashboard' && mode === 'backtest' && <>
 
@@ -485,32 +488,6 @@ function App() {
           </div>
           {error && <div className="error-message" role="alert">{error}</div>}
         </form>
-
-        <section className="history-section" aria-labelledby="history-heading">
-          <div className="history-heading">
-            <div>
-              <div className="history-title-line"><h2 id="history-heading">Test geçmişi</h2><span className="history-count">{history.length} / 10 kayıt</span></div>
-              <p>Yalnızca “Geçmişe kaydet” dediğiniz sonuçlar Supabase’de saklanır. Geçmişten testi açıp grafik ve işlem günlüğüne dönün.</p>
-            </div>
-            {history.length > 0 && <div className="history-tools">
-              <label className="history-search"><span className="sr-only">Test geçmişinde ara</span><input value={historyQuery} onChange={event => setHistoryQuery(event.target.value)} placeholder="Hisse veya strateji ara" /></label>
-              <button type="button" className="history-clear" onClick={clearBacktestHistory}>Geçmişi temizle</button>
-            </div>}
-          </div>
-          {historyError && <div className="error-message" role="alert">{historyError}</div>}
-          {filteredHistory.length ? <div className="history-list">
-            {filteredHistory.map(run => <div className="history-row" key={run.id}>
-              <button type="button" className={`history-item ${run.id === activeHistoryId ? 'active' : ''}`} aria-pressed={run.id === activeHistoryId} onClick={() => openBacktestRun(run)}>
-                <span className="history-run-info"><strong>{run.result.symbol}</strong><span>{strategyDisplayName(run.result.strategy)}</span><small>{run.result.period} · {intervalLabels[run.result.interval ?? '1d']} · {new Intl.DateTimeFormat('tr-TR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(run.savedAt))}</small></span>
-                <span className={`history-metric ${run.result.metrics.total_return >= 0 ? 'positive' : 'pnl-negative'}`}><small>Toplam getiri</small><strong>{formatPercent(run.result.metrics.total_return)}</strong></span>
-                <span className="history-metric"><small>Sharpe</small><strong>{run.result.metrics.sharpe_ratio.toFixed(2)}</strong></span>
-                <span className="history-metric"><small>Azami düşüş</small><strong>{formatPercent(run.result.metrics.max_drawdown)}</strong></span>
-                <span className="history-trades">{run.result.metrics.closed_trades} işlem <span aria-hidden="true">· Aç</span></span>
-              </button>
-              <button type="button" className="history-remove" aria-label={`${run.result.symbol} ${run.result.strategy} kaydını sil`} title="Bu kaydı sil" onClick={() => removeBacktestRun(run.id)}><Trash2 size={16} aria-hidden="true" /></button>
-            </div>)}
-          </div> : <div className="history-empty">{historyBusy ? 'Supabase test geçmişi yükleniyor…' : history.length ? 'Bu aramayla eşleşen test yok.' : 'Henüz kaydedilmiş test yok. Bir backtest çalıştırıp saklamak istediğiniz sonucu “Geçmişe kaydet” ile ekleyin.'}</div>}
-        </section>
 
         <div className="results-heading"><div><div className="section-title"><h2>Performans özeti</h2><span className="period-badge">{result?.period}</span></div><p>{result ? `${result.symbol} · ${strategyDisplayName(result.strategy)} · ${chartData.length.toLocaleString('tr-TR')} ${intervalLabels[result.interval ?? '1d'].toLocaleLowerCase('tr-TR')} bar` : 'Henüz bir simülasyon çalıştırılmadı.'}</p>{result && <p className="result-parameters">{strategyParameterSummary(result)}{result.risk_enabled === undefined ? '' : result.risk_enabled ? ` · Risk çıkışları açık · SL %${result.stop_loss_pct ?? 5} / TP %${result.take_profit_pct ?? 10}` : ' · Risk çıkışları kapalı'}</p>}</div><div className="result-actions">{result && <button className="export-button" disabled={Boolean(activeHistoryId) || historyBusy || !databaseOnline} onClick={saveCurrentBacktest}><Save size={15} />{activeHistoryId ? 'Geçmişte kayıtlı' : historyBusy ? 'Kaydediliyor…' : 'Geçmişe kaydet'}</button>}<button className="export-button" disabled={!result} onClick={() => result && downloadCsv(result)}><Download size={15} /> CSV indir</button></div></div>
 
@@ -646,6 +623,37 @@ function App() {
 
         <section className="lower-grid"><div className="data-card"><div className="card-heading"><div><h2>İşlem günlüğü</h2><p>{result ? `${closedTrades.length} kapanmış işlem` : 'Gerçekleşen alım ve satımlar'}</p></div></div><div className="table-scroll" id="trade-table"><table><thead><tr><th>Giriş</th><th>Çıkış</th><th>Kâr / zarar</th><th>Çıkış nedeni</th></tr></thead><tbody>{closedTrades.length ? closedTrades.slice().reverse().map((trade, i) => <tr key={`${trade.entry_date}-${i}`}><td>{trade.entry_date} · {formatMoney(trade.entry_price, result?.market)}</td><td>{trade.exit_date} · {formatMoney(trade.exit_price, result?.market)}</td><td className={trade.pnl >= 0 ? 'pnl-positive' : 'pnl-negative'}>{formatMoney(trade.pnl, result?.market)}</td><td><span className={`trade-pill ${trade.exit_reason === 'signal' ? 'buy' : 'sell'}`}>{trade.exit_reason === 'signal' ? 'Sinyal' : trade.exit_reason === 'stop_loss' ? 'Stop-loss' : 'Take-profit'}</span></td></tr>) : <tr><td colSpan={4} className="empty-row">{result ? 'Bu dönemde kapanmış işlem yok.' : 'Backtest sonrası işlem kayıtları listelenir.'}</td></tr>}</tbody></table></div></div>
         </section>
+        </>}
+        {page === 'history' && <>
+          <header className="page-heading history-page-heading">
+            <h1>Kayıtlı testler</h1>
+            <p>Yalnızca sizin kaydettiğiniz backtestler burada listelenir. Bir kaydı açıp performans grafiğine ve işlem günlüğüne dönebilirsiniz.</p>
+          </header>
+          <section className="history-section history-page-section" aria-labelledby="history-heading">
+            <div className="history-heading">
+              <div>
+                <div className="history-title-line"><h2 id="history-heading">Backtest arşivi</h2><span className="history-count">{history.length} / 10 kayıt</span></div>
+                <p>Rastgele araştırma raporları bu arşive eklenmez; onlar kendi sayfasında yerel olarak tutulur.</p>
+              </div>
+              {history.length > 0 && <div className="history-tools">
+                <label className="history-search"><span className="sr-only">Test geçmişinde ara</span><input value={historyQuery} onChange={event => setHistoryQuery(event.target.value)} placeholder="Hisse veya strateji ara" /></label>
+                <button type="button" className="history-clear" onClick={clearBacktestHistory}>Geçmişi temizle</button>
+              </div>}
+            </div>
+            {historyError && <div className="error-message" role="alert">{historyError}</div>}
+            {filteredHistory.length ? <div className="history-list">
+              {filteredHistory.map(run => <div className="history-row" key={run.id}>
+                <button type="button" className={`history-item ${run.id === activeHistoryId ? 'active' : ''}`} aria-pressed={run.id === activeHistoryId} onClick={() => openBacktestRun(run)}>
+                  <span className="history-run-info"><strong>{run.result.symbol}</strong><span>{strategyDisplayName(run.result.strategy)}</span><small>{run.result.period} · {intervalLabels[run.result.interval ?? '1d']} · {new Intl.DateTimeFormat('tr-TR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(run.savedAt))}</small></span>
+                  <span className={`history-metric ${run.result.metrics.total_return >= 0 ? 'positive' : 'pnl-negative'}`}><small>Toplam getiri</small><strong>{formatPercent(run.result.metrics.total_return)}</strong></span>
+                  <span className="history-metric"><small>Sharpe</small><strong>{run.result.metrics.sharpe_ratio.toFixed(2)}</strong></span>
+                  <span className="history-metric"><small>Azami düşüş</small><strong>{formatPercent(run.result.metrics.max_drawdown)}</strong></span>
+                  <span className="history-trades">{run.result.metrics.closed_trades} işlem <span aria-hidden="true">· Aç</span></span>
+                </button>
+                <button type="button" className="history-remove" aria-label={`${run.result.symbol} ${run.result.strategy} kaydını sil`} title="Bu kaydı sil" onClick={() => removeBacktestRun(run.id)}><Trash2 size={16} aria-hidden="true" /></button>
+              </div>)}
+            </div> : <div className="history-empty">{historyBusy ? 'Supabase test geçmişi yükleniyor…' : history.length ? 'Bu aramayla eşleşen test yok.' : 'Henüz kaydedilmiş test yok. Bir backtest çalıştırıp saklamak istediğiniz sonucu “Geçmişe kaydet” ile ekleyin.'}</div>}
+          </section>
         </>}
         {page === 'simulations' && <>
           <header className="page-heading simulation-page-heading">
