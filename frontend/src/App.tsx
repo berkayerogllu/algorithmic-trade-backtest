@@ -22,6 +22,7 @@ type ResearchMetrics = Metrics & { final_value: number };
 type ResearchSplit = 'optimization' | 'validation' | 'test';
 type ResearchCandidate = { rank: number; label: string; components: StrategyComponent[]; combination_method: CombinationMethod; metrics: Record<ResearchSplit, ResearchMetrics> };
 type RandomResearchResponse = { symbol: string; market: Market; interval: Interval; period: string; source: string; seed: number | null; requested_iterations: number; evaluated_iterations: number; split_bars: Record<ResearchSplit, number>; risk_enabled: boolean; stop_loss_pct: number; take_profit_pct: number; baseline: Record<ResearchSplit, ResearchMetrics>; candidates: ResearchCandidate[]; selection_rule: string };
+type ResearchHistoryItem = { id: string; savedAt: string; result: RandomResearchResponse };
 
 type IndicatorStrategy = 'SMA Crossover' | 'EMA Crossover' | 'RSI' | 'MACD' | 'Bollinger Bands' | 'Stochastic Oscillator' | 'Donchian Channel';
 type Strategy = IndicatorStrategy | 'Buy & Hold' | 'Combined';
@@ -102,8 +103,16 @@ const strategyParameterSummary = (result: BacktestResponse) => {
 const formatMoney = (n: number, market: Market = 'BIST') => new Intl.NumberFormat(market === 'US' ? 'en-US' : 'tr-TR', { style: 'currency', currency: market === 'US' ? 'USD' : 'TRY', maximumFractionDigits: 0 }).format(n);
 const formatPercent = (n: number) => `${n >= 0 ? '+' : ''}${(n * 100).toFixed(2)}%`;
 const formatPercentagePoints = (n: number) => `${n >= 0 ? '+' : ''}${(n * 100).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const RESEARCH_HISTORY_KEY = 'piyasaLabRandomResearchHistoryV1';
+const loadResearchHistory = (): ResearchHistoryItem[] => {
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(RESEARCH_HISTORY_KEY) ?? '[]');
+    return Array.isArray(parsed) ? parsed.filter((item): item is ResearchHistoryItem => Boolean(item && typeof item.id === 'string' && typeof item.savedAt === 'string' && item.result?.symbol && Array.isArray(item.result.candidates))).slice(0, 15) : [];
+  } catch { return []; }
+};
 
 function App() {
+  const [page, setPage] = useState<'dashboard' | 'simulations'>(() => new URLSearchParams(window.location.search).get('page') === 'simulations' ? 'simulations' : 'dashboard');
   const [market, setMarket] = useState<Market>('BIST');
   const [history, setHistory] = useState<BacktestRun[]>([]);
   const [historyQuery, setHistoryQuery] = useState('');
@@ -115,7 +124,7 @@ function App() {
   const [componentParameters, setComponentParameters] = useState<Record<string, Record<string, string>>>({});
   const [combinationMethod, setCombinationMethod] = useState<CombinationMethod>('AND');
   const [interval, setInterval] = useState<Interval>('1d');
-  const [mode, setMode] = useState<'backtest' | 'forecast' | 'random'>('backtest');
+  const [mode, setMode] = useState<'backtest' | 'forecast' | 'random'>(() => new URLSearchParams(window.location.search).get('page') === 'simulations' ? 'random' : 'backtest');
   const [horizon, setHorizon] = useState(5);
   const [symbol, setSymbol] = useState('THYAO.IS');
   const [start, setStart] = useState(() => monthsAgoISO(36));
@@ -134,7 +143,9 @@ function App() {
   const [error, setError] = useState('');
   const [result, setResult] = useState<BacktestResponse | null>(null);
   const [forecast, setForecast] = useState<ForecastResponse | null>(null);
-  const [randomResearch, setRandomResearch] = useState<RandomResearchResponse | null>(null);
+  const [researchHistory, setResearchHistory] = useState<ResearchHistoryItem[]>(loadResearchHistory);
+  const [randomResearch, setRandomResearch] = useState<RandomResearchResponse | null>(() => loadResearchHistory()[0]?.result ?? null);
+  const [activeResearchId, setActiveResearchId] = useState<string | null>(() => loadResearchHistory()[0]?.id ?? null);
   const [researchIndicators, setResearchIndicators] = useState<IndicatorStrategy[]>([...Object.keys(strategyPresets) as IndicatorStrategy[]]);
   const [researchIterations, setResearchIterations] = useState(30);
   const [researchSeed, setResearchSeed] = useState('4015');
@@ -178,6 +189,19 @@ function App() {
     const timer = window.setInterval(checkApi, 15000);
     return () => window.clearInterval(timer);
   }, []);
+  useEffect(() => {
+    const handleNavigation = () => {
+      const isSimulationPage = new URLSearchParams(window.location.search).get('page') === 'simulations';
+      setPage(isSimulationPage ? 'simulations' : 'dashboard');
+      setMode(isSimulationPage ? 'random' : 'backtest');
+      setError('');
+    };
+    window.addEventListener('popstate', handleNavigation);
+    return () => window.removeEventListener('popstate', handleNavigation);
+  }, []);
+  useEffect(() => {
+    try { window.localStorage.setItem(RESEARCH_HISTORY_KEY, JSON.stringify(researchHistory.slice(0, 15))); } catch { /* Local history remains usable when browser storage is unavailable. */ }
+  }, [researchHistory]);
   useEffect(() => {
     let cancelled = false;
     fetch('/api/history').then(async response => {
@@ -290,7 +314,7 @@ function App() {
   };
 
   const runRandomResearch = async () => {
-    setBusy(true); setError(''); setRandomResearch(null);
+    setBusy(true); setError(''); setRandomResearch(null); setActiveResearchId(null);
     try {
       const response = await fetch('/api/random-strategy-research', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -298,7 +322,11 @@ function App() {
       });
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(typeof body?.detail === 'string' ? body.detail : 'Rastgele strateji araştırması çalıştırılamadı.');
-      setRandomResearch(body as RandomResearchResponse);
+      const report = body as RandomResearchResponse;
+      const savedReport: ResearchHistoryItem = { id: `${Date.now()}-${report.seed ?? 'random'}`, savedAt: new Date().toISOString(), result: report };
+      setRandomResearch(report);
+      setActiveResearchId(savedReport.id);
+      setResearchHistory(current => [savedReport, ...current.filter(item => item.id !== savedReport.id)].slice(0, 15));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Araştırma sunucusuna ulaşılamadı.');
     } finally { setBusy(false); }
@@ -321,26 +349,41 @@ function App() {
     return [...current, name];
   });
 
+  const navigatePage = (nextPage: 'dashboard' | 'simulations') => {
+    const nextMode = nextPage === 'simulations' ? 'random' : 'backtest';
+    const nextUrl = nextPage === 'simulations' ? `${window.location.pathname}?page=simulations` : window.location.pathname;
+    window.history.pushState({ page: nextPage }, '', nextUrl);
+    setPage(nextPage);
+    setMode(nextMode);
+    setError('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const openResearchReport = (item: ResearchHistoryItem) => {
+    setRandomResearch(item.result);
+    setActiveResearchId(item.id);
+  };
+
   const metrics = result?.metrics;
   const riskEffect = result?.risk_effect;
   return <div className="app-shell">
     <header className="topbar">
       <a href="#terminal" className="brand">piyasa.lab</a>
       <span className="connection">Simülasyon · {apiOnline ? 'Bağlı' : 'Çevrimdışı'} · Supabase · {databaseOnline ? 'Bağlı' : 'Bağlantı yok'}</span>
+      <button type="button" className={`page-nav-button ${page === 'simulations' ? 'active' : ''}`} onClick={() => navigatePage(page === 'dashboard' ? 'simulations' : 'dashboard')}>{page === 'dashboard' ? 'Simülasyon geçmişleri' : 'Ana araştırma ekranı'}</button>
     </header>
     <main id="terminal" className="content">
-        <header className="page-heading">
+        {page === 'dashboard' && <header className="page-heading">
           <h1>BIST &amp; ABD hisse araştırması</h1>
           <p>İki piyasa için geçmiş veriyi inceleyin, stratejileri test edin ve tahmin performansını ölçün.</p>
-        </header>
+        </header>}
 
-        <div className="mode-tabs" role="tablist" aria-label="Analiz türü">
+        {page === 'dashboard' && <div className="mode-tabs" role="tablist" aria-label="Analiz türü">
           <button type="button" role="tab" aria-selected={mode === 'backtest'} className={mode === 'backtest' ? 'selected' : ''} onClick={() => { setMode('backtest'); setError(''); }}>Geriye dönük test</button>
           <button type="button" role="tab" aria-selected={mode === 'forecast'} className={mode === 'forecast' ? 'selected' : ''} onClick={() => { setMode('forecast'); setError(''); }}>Tahmin araştırması</button>
-          <button type="button" role="tab" aria-selected={mode === 'random'} className={mode === 'random' ? 'selected' : ''} onClick={() => { setMode('random'); setError(''); }}>Rastgele strateji araştırması</button>
-        </div>
+        </div>}
 
-        {mode === 'backtest' && <>
+        {page === 'dashboard' && mode === 'backtest' && <>
 
         <form className="run-panel" onSubmit={event => { event.preventDefault(); void runBacktest(); }}>
           <h2>Backtest ayarları</h2>
@@ -604,7 +647,11 @@ function App() {
         <section className="lower-grid"><div className="data-card"><div className="card-heading"><div><h2>İşlem günlüğü</h2><p>{result ? `${closedTrades.length} kapanmış işlem` : 'Gerçekleşen alım ve satımlar'}</p></div></div><div className="table-scroll" id="trade-table"><table><thead><tr><th>Giriş</th><th>Çıkış</th><th>Kâr / zarar</th><th>Çıkış nedeni</th></tr></thead><tbody>{closedTrades.length ? closedTrades.slice().reverse().map((trade, i) => <tr key={`${trade.entry_date}-${i}`}><td>{trade.entry_date} · {formatMoney(trade.entry_price, result?.market)}</td><td>{trade.exit_date} · {formatMoney(trade.exit_price, result?.market)}</td><td className={trade.pnl >= 0 ? 'pnl-positive' : 'pnl-negative'}>{formatMoney(trade.pnl, result?.market)}</td><td><span className={`trade-pill ${trade.exit_reason === 'signal' ? 'buy' : 'sell'}`}>{trade.exit_reason === 'signal' ? 'Sinyal' : trade.exit_reason === 'stop_loss' ? 'Stop-loss' : 'Take-profit'}</span></td></tr>) : <tr><td colSpan={4} className="empty-row">{result ? 'Bu dönemde kapanmış işlem yok.' : 'Backtest sonrası işlem kayıtları listelenir.'}</td></tr>}</tbody></table></div></div>
         </section>
         </>}
-        {mode === 'random' && <>
+        {page === 'simulations' && <>
+          <header className="page-heading simulation-page-heading">
+            <h1>Simülasyon geçmişleri</h1>
+            <p>Hisse bazında rastgele indikatör birleşimleri üretin, sonuçları karşılaştırın ve önceki araştırma raporlarını yeniden açın.</p>
+          </header>
           <form className="run-panel" onSubmit={event => { event.preventDefault(); void runRandomResearch(); }}>
             <h2>Rastgele indikatör karşılaştırması</h2>
             <p className="panel-intro">Seçtiğiniz indikatör havuzundan rastgele 2–4’lü birleşimler oluşturur. Sıralama yalnızca keşif dönemine göre yapılır; doğrulama ve test bölümleri seçimden ayrı tutulur.</p>
@@ -633,6 +680,15 @@ function App() {
             <button className="run-button" type="submit" disabled={busy || !symbol.trim() || researchIndicators.length < 2}>{busy ? 'Kombinasyonlar test ediliyor…' : `${researchIterations} rastgele birleşimi karşılaştır`}</button>
             {error && <div className="error-message" role="alert">{error}</div>}
           </form>
+          <section className="simulation-history-section" aria-labelledby="simulation-history-heading">
+            <div className="card-heading"><div><h2 id="simulation-history-heading">Önceki araştırmalar</h2><p>Son 15 rapor bu tarayıcıda saklanır; Supabase test geçmişine eklenmez.</p></div><span className="history-count">{researchHistory.length} / 15</span></div>
+            {researchHistory.length ? <div className="simulation-history-list">{researchHistory.map(item => <button key={item.id} type="button" className={`simulation-history-item ${activeResearchId === item.id ? 'active' : ''}`} onClick={() => openResearchReport(item)}>
+              <span className="simulation-history-main"><strong>{item.result.symbol} · {item.result.evaluated_iterations} aday</strong><small>{new Date(item.savedAt).toLocaleString('tr-TR')} · {item.result.interval === '1d' ? 'Günlük' : item.result.interval === '1wk' ? 'Haftalık' : 'Aylık'} · {item.result.period}</small></span>
+              <span className="simulation-history-metric"><small>Keşifte ilk sıra</small><strong className={item.result.candidates[0]?.metrics.optimization.total_return >= 0 ? 'positive' : 'pnl-negative'}>{formatPercent(item.result.candidates[0]?.metrics.optimization.total_return ?? 0)}</strong></span>
+              <span className="simulation-history-metric"><small>İlk sıranın test getirisi</small><strong className={item.result.candidates[0]?.metrics.test.total_return >= 0 ? 'positive' : 'pnl-negative'}>{formatPercent(item.result.candidates[0]?.metrics.test.total_return ?? 0)}</strong></span>
+              <span className="simulation-history-open">Raporu aç</span>
+            </button>)}</div> : <p className="simulation-history-empty">Henüz araştırma yok. Hisseyi ve tarih aralığını seçip rastgele kombinasyonları çalıştırdığınızda rapor burada saklanır.</p>}
+          </section>
           {randomResearch ? <>
             <div className="results-heading research-results-heading"><div><h2>{randomResearch.symbol} · strateji araştırma raporu</h2><p>{randomResearch.period} · {intervalLabels[randomResearch.interval]} · {randomResearch.source} · tohum {randomResearch.seed ?? 'rastgele'}</p></div><button type="button" className="export-button" onClick={exportRandomResearch}><Download size={16} /> CSV raporunu indir</button></div>
             <section className="metric-grid research-metrics">
@@ -649,7 +705,7 @@ function App() {
             </section>
           </> : <p className="forecast-empty">Bir hisse, tarih aralığı ve indikatör havuzu seçip araştırmayı başlatın. Sonuçlar bu ekranda raporlanır; otomatik olarak kayıt geçmişine eklenmez.</p>}
         </>}
-        {mode === 'forecast' && <>
+        {page === 'dashboard' && mode === 'forecast' && <>
           <section className="run-panel">
             <h2>Geçmiş veriden tahmin</h2>
             <p className="forecast-intro">Geçmiş fiyat, trend, oynaklık ve hacim özellikleriyle ileri dönem getirisini tahmin eder. Model, son dönem verisinde kronolojik olarak doğrulanır.</p>

@@ -36,6 +36,8 @@ button, input, select { font: inherit; }
 .topbar, .content { width: min(1120px, calc(100% - 40px)); margin-inline: auto; }
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 68px; border-bottom: 1px solid var(--line); }
 .brand { font: 700 1.4rem Georgia, serif; text-decoration: none; color: var(--ink); }
+.page-nav-button { flex:none; min-height:38px; padding:6px 12px; border-color:var(--line-strong); color:var(--ink); background:var(--surface-muted); font-size:.82rem; font-weight:620; }
+.page-nav-button:hover,.page-nav-button.active { border-color:var(--accent); color:var(--accent); background:var(--accent-soft); }
 .connection, .period-badge, .chart-foot, .app-footer { color: var(--muted); font-size: .875rem; }
 .page-heading { padding: 44px 0 28px; }
 .page-heading p { margin-top: 12px; }
@@ -111,6 +113,22 @@ button, input, select { font: inherit; }
 .research-table td:first-child small { margin-top:5px; color:var(--muted); font-size:.7rem; line-height:1.5; }
 .research-table td:not(:first-child),.research-table th:not(:first-child) { text-align:right; }
 .research-table tbody tr:first-child { background:var(--accent-soft); }
+.simulation-page-heading { padding-bottom:20px; }
+.simulation-page-heading h1 { font-size:clamp(2rem,4vw,3.1rem); }
+.simulation-page-heading p { max-width:68ch; }
+.simulation-history-section { margin-top:22px; padding:20px 22px; border:1px solid var(--line); border-radius:10px; background:var(--paper); }
+.simulation-history-section .card-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.simulation-history-list { margin-top:12px; border-top:1px solid var(--line); }
+.simulation-history-item { display:grid; grid-template-columns:minmax(220px,1.8fr) minmax(120px,.7fr) minmax(140px,.8fr) auto; align-items:center; gap:18px; width:100%; min-height:68px; padding:11px 10px; border:0; border-bottom:1px solid var(--line); border-radius:0; color:var(--ink); background:transparent; text-align:left; }
+.simulation-history-item:hover,.simulation-history-item.active { background:var(--accent-soft); }
+.simulation-history-item.active { box-shadow:inset 0 0 0 1px var(--accent); }
+.simulation-history-main,.simulation-history-metric { display:grid; gap:4px; min-width:0; }
+.simulation-history-main strong { font-size:.88rem; }
+.simulation-history-main small { overflow:hidden; color:var(--muted); font-size:.72rem; text-overflow:ellipsis; white-space:nowrap; }
+.simulation-history-metric small { color:var(--muted); font-size:.7rem; }
+.simulation-history-metric strong { font-size:.88rem; font-variant-numeric:tabular-nums; }
+.simulation-history-open { color:var(--accent); font-size:.78rem; font-weight:650; white-space:nowrap; }
+.simulation-history-empty { margin-top:12px; padding:14px 0 2px; font-size:.84rem; }
 .forecast-intro { max-width:70ch; margin-top:10px; }
 .forecast-controls { margin-top:22px; }
 .forecast-controls .stock-field { z-index: 4; }
@@ -318,6 +336,9 @@ button:disabled { color: var(--muted); }
   .research-controls,.research-capital { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .research-indicators { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .research-results-heading { align-items:flex-start; }
+  .simulation-history-item { grid-template-columns:minmax(0,1fr) minmax(120px,.7fr); gap:10px; }
+  .simulation-history-main { grid-column:1/-1; }
+  .simulation-history-open { grid-column:1/-1; }
   .history-tools { flex-basis: auto; align-items: stretch; flex-direction: column; }
   .history-search { flex-basis: auto; }
   .history-clear { align-self: flex-end; }
@@ -350,4 +371,8 @@ button:disabled { color: var(--muted); }
   .result-actions { width: 100%; }
   .result-actions button { flex: 1; justify-content: center; }
   .topbar, .content { width: calc(100% - 28px); }
+  .topbar { flex-wrap:wrap; padding-block:10px; }
+  .topbar .connection { flex:1; text-align:right; font-size:.72rem; }
+  .page-nav-button { width:100%; }
+  .simulation-history-section { padding:15px 13px; }
 }
