@@ -21,6 +21,7 @@ from .data_loader import DataLoader
 from . import database
 from .performance import PerformanceAnalyzer
 from .forecasting import HistoricalReturnForecaster
+from .random_research import describe_candidate, generate_random_candidates
 from .risk_manager import RiskManager
 from .strategies import (
     BollingerBandsStrategy,
@@ -76,6 +77,25 @@ class ForecastRequest(BaseModel):
     symbol: str = Field(min_length=1, max_length=20)
     market: Market = "BIST"
     horizon: int = Field(default=5, ge=1, le=20)
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+
+
+class RandomResearchRequest(BaseModel):
+    symbol: str = Field(min_length=1, max_length=20)
+    market: Market = "BIST"
+    interval: Interval = "1d"
+    indicators: list[Literal[
+        "SMA Crossover", "EMA Crossover", "RSI", "MACD", "Bollinger Bands",
+        "Stochastic Oscillator", "Donchian Channel",
+    ]] = Field(min_length=2, max_length=7)
+    iterations: int = Field(default=30, ge=5, le=100)
+    seed: Optional[int] = Field(default=None, ge=0, le=2**32 - 1)
+    initial_cash: float = Field(default=100_000, gt=0)
+    commission_rate: float = Field(default=0.001, ge=0, lt=1)
+    risk_enabled: bool = True
+    stop_loss_pct: float = Field(default=5.0, gt=0, lt=100)
+    take_profit_pct: float = Field(default=10.0, gt=0, lt=100)
     start_date: Optional[date] = None
     end_date: Optional[date] = None
 
@@ -411,6 +431,120 @@ def run_backtest(request: BacktestRequest) -> dict:
         "points": points,
         "trades": trades,
     }
+
+
+@app.post("/api/random-strategy-research")
+def random_strategy_research(request: RandomResearchRequest) -> dict[str, Any]:
+    """Compare random indicator combinations using chronological holdout periods."""
+    symbol = request.symbol.strip().upper()
+    if request.market == "BIST":
+        if not re.fullmatch(r"[A-Z0-9]{1,12}(\.IS)?", symbol):
+            raise HTTPException(422, "Geçerli bir BIST hisse kodu girin.")
+        if not symbol.endswith(".IS"):
+            symbol += ".IS"
+    elif not re.fullmatch(r"[A-Z][A-Z0-9.-]{0,14}", symbol):
+        raise HTTPException(422, "Geçerli bir ABD hisse sembolü girin.")
+
+    start = request.start_date or date(2023, 1, 1)
+    end = request.end_date
+    if end and (end < start or end > date.today()):
+        raise HTTPException(422, "Bitiş tarihi başlangıçtan önce veya bugünden sonra olamaz.")
+    if len(set(request.indicators)) < 2:
+        raise HTTPException(422, "En az iki farklı indikatör seçin.")
+
+    try:
+        loader = DataLoader()
+        if request.market == "BIST" and symbol == "THYAO.IS":
+            data = loader.load_csv(PROJECT_ROOT / "data" / "THYAO.IS.csv")
+            data = loader.resample(data, request.interval)
+            source = "Yahoo Finance · Yerel THYAO arşivi"
+        else:
+            until = (end + timedelta(days=1)).isoformat() if end else None
+            data = loader.download_yfinance(symbol, start.isoformat(), until, request.interval)
+            source = "Yahoo Finance · İndirilen tarihsel veri"
+        dates = pd.DatetimeIndex(data.index).date
+        data = data[dates >= start]
+        if end:
+            data = data[pd.DatetimeIndex(data.index).date <= end]
+        if len(data) < 200:
+            raise ValueError(
+                f"Kronolojik keşif/doğrulama/test ayrımı için en az 200 {request.interval} veri barı gerekli. "
+                "Tarih aralığını genişletin veya daha sık veri aralığı seçin."
+            )
+
+        boundaries = (int(len(data) * 0.6), int(len(data) * 0.8))
+        segments = {
+            "optimization": data.iloc[:boundaries[0]],
+            "validation": data.iloc[boundaries[0]:boundaries[1]],
+            "test": data.iloc[boundaries[1]:],
+        }
+        candidates = generate_random_candidates(list(dict.fromkeys(request.indicators)), request.iterations, request.seed)
+        periods_per_year = {"1d": 252, "1wk": 52, "1mo": 12}[request.interval]
+        analyzer = PerformanceAnalyzer(periods_per_year=periods_per_year)
+        risk_options = {
+            "stop_loss_pct": request.stop_loss_pct / 100,
+            "take_profit_pct": request.take_profit_pct / 100,
+        }
+        risk_manager = RiskManager(**risk_options) if request.risk_enabled else None
+
+        def evaluate(frame: pd.DataFrame, strategy: Any) -> dict[str, Any]:
+            result = BacktestEngine(request.initial_cash, request.commission_rate, risk_manager).run(frame, strategy)
+            metrics = analyzer.analyze(result)
+            return {
+                **metrics,
+                "final_value": float(result["Equity"].iloc[-1]),
+            }
+
+        baseline = {
+            split: evaluate(frame, BuyAndHoldStrategy())
+            for split, frame in segments.items()
+        }
+        evaluated: list[dict[str, Any]] = []
+        for candidate in candidates:
+            components = [StrategyComponent(**item) for item in candidate["components"]]
+            strategy = _strategy_for("Combined", {}, components, candidate["combination_method"])
+            minimum = max(_minimum_bars(item.strategy, item.parameters) for item in components)
+            if any(len(frame) < minimum for frame in segments.values()):
+                continue
+            by_split = {split: evaluate(frame, strategy) for split, frame in segments.items()}
+            evaluated.append({
+                **candidate,
+                "label": describe_candidate(candidate),
+                "metrics": by_split,
+            })
+        if not evaluated:
+            raise ValueError("Bu tarih aralığındaki her bölüm en az 40 bar içermeli. Günlük veriye veya daha uzun döneme geçin.")
+        # Candidate selection uses only the optimization segment. Validation/test remain reporting-only holdouts.
+        evaluated.sort(
+            key=lambda item: (
+                item["metrics"]["optimization"]["total_return"],
+                item["metrics"]["optimization"]["sharpe_ratio"],
+            ),
+            reverse=True,
+        )
+        for rank, item in enumerate(evaluated, start=1):
+            item["rank"] = rank
+        return {
+            "symbol": symbol,
+            "market": request.market,
+            "interval": request.interval,
+            "period": f"{pd.Timestamp(data.index[0]).date().isoformat()} — {pd.Timestamp(data.index[-1]).date().isoformat()}",
+            "source": source,
+            "seed": request.seed,
+            "requested_iterations": request.iterations,
+            "evaluated_iterations": len(evaluated),
+            "split_bars": {name: len(frame) for name, frame in segments.items()},
+            "risk_enabled": request.risk_enabled,
+            "stop_loss_pct": request.stop_loss_pct,
+            "take_profit_pct": request.take_profit_pct,
+            "baseline": baseline,
+            "candidates": evaluated,
+            "selection_rule": "Keşif dönemindeki toplam getiri; eşitlikte Sharpe oranı.",
+        }
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(502, f"Veri veya strateji araştırması hatası: {exc}") from exc
 
 
 @app.post("/api/forecast")

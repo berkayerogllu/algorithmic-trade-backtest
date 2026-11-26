@@ -18,6 +18,10 @@ type IndicatorLine = { key: string; name: string; kind: 'price' | 'oscillator' |
 type BacktestResponse = { points: Point[]; trades: Trade[]; metrics: Metrics; strategy: Strategy; symbol: string; market?: Market; period: string; source: string; parameters: Record<string, number>; interval?: Interval; components?: StrategyComponent[]; combination_method?: CombinationMethod | null; risk_enabled?: boolean; stop_loss_pct?: number; take_profit_pct?: number; indicator_lines?: IndicatorLine[]; risk_effect?: RiskEffect; indicator_effects?: IndicatorEffect[] };
 type BacktestRun = { id: string; savedAt: string; result: BacktestResponse };
 type ForecastResponse = { symbol: string; market?: Market; source: string; as_of: string; last_close: number; predicted_return: number; predicted_close: number; lower_close: number; upper_close: number; horizon: number; validation_mae_pct: number; baseline_mae_pct: number; directional_accuracy: number; validation_samples: number; beats_baseline: boolean; history: { date: string; close: number }[] };
+type ResearchMetrics = Metrics & { final_value: number };
+type ResearchSplit = 'optimization' | 'validation' | 'test';
+type ResearchCandidate = { rank: number; label: string; components: StrategyComponent[]; combination_method: CombinationMethod; metrics: Record<ResearchSplit, ResearchMetrics> };
+type RandomResearchResponse = { symbol: string; market: Market; interval: Interval; period: string; source: string; seed: number | null; requested_iterations: number; evaluated_iterations: number; split_bars: Record<ResearchSplit, number>; risk_enabled: boolean; stop_loss_pct: number; take_profit_pct: number; baseline: Record<ResearchSplit, ResearchMetrics>; candidates: ResearchCandidate[]; selection_rule: string };
 
 type IndicatorStrategy = 'SMA Crossover' | 'EMA Crossover' | 'RSI' | 'MACD' | 'Bollinger Bands' | 'Stochastic Oscillator' | 'Donchian Channel';
 type Strategy = IndicatorStrategy | 'Buy & Hold' | 'Combined';
@@ -111,7 +115,7 @@ function App() {
   const [componentParameters, setComponentParameters] = useState<Record<string, Record<string, string>>>({});
   const [combinationMethod, setCombinationMethod] = useState<CombinationMethod>('AND');
   const [interval, setInterval] = useState<Interval>('1d');
-  const [mode, setMode] = useState<'backtest' | 'forecast'>('backtest');
+  const [mode, setMode] = useState<'backtest' | 'forecast' | 'random'>('backtest');
   const [horizon, setHorizon] = useState(5);
   const [symbol, setSymbol] = useState('THYAO.IS');
   const [start, setStart] = useState(() => monthsAgoISO(36));
@@ -130,6 +134,10 @@ function App() {
   const [error, setError] = useState('');
   const [result, setResult] = useState<BacktestResponse | null>(null);
   const [forecast, setForecast] = useState<ForecastResponse | null>(null);
+  const [randomResearch, setRandomResearch] = useState<RandomResearchResponse | null>(null);
+  const [researchIndicators, setResearchIndicators] = useState<IndicatorStrategy[]>([...Object.keys(strategyPresets) as IndicatorStrategy[]]);
+  const [researchIterations, setResearchIterations] = useState(30);
+  const [researchSeed, setResearchSeed] = useState('4015');
 
   const chartData = useMemo(() => result?.points ?? [], [result]);
   const indicatorChartData = useMemo(() => {
@@ -281,6 +289,38 @@ function App() {
     } finally { setBusy(false); }
   };
 
+  const runRandomResearch = async () => {
+    setBusy(true); setError(''); setRandomResearch(null);
+    try {
+      const response = await fetch('/api/random-strategy-research', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol: symbol.trim(), market, interval, indicators: researchIndicators, iterations: researchIterations, seed: researchSeed.trim() ? Number(researchSeed) : null, start_date: start, end_date: end || null, initial_cash: Number(capital), commission_rate: Number(commission) / 100, risk_enabled: riskEnabled, stop_loss_pct: Number(stopLossPct), take_profit_pct: Number(takeProfitPct) }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(typeof body?.detail === 'string' ? body.detail : 'Rastgele strateji araştırması çalıştırılamadı.');
+      setRandomResearch(body as RandomResearchResponse);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Araştırma sunucusuna ulaşılamadı.');
+    } finally { setBusy(false); }
+  };
+
+  const exportRandomResearch = () => {
+    if (!randomResearch) return;
+    const columns = ['Sıra', 'Strateji', 'Optimizasyon getirisi', 'Optimizasyon Sharpe', 'Optimizasyon max düşüş', 'Doğrulama getirisi', 'Doğrulama max düşüş', 'Test getirisi', 'Test max düşüş', 'Test kazanma oranı', 'Test kapanan işlem', 'Test dönem sonu portföy'];
+    const rows = randomResearch.candidates.map(candidate => {
+      const o = candidate.metrics.optimization, v = candidate.metrics.validation, t = candidate.metrics.test;
+      return [candidate.rank, candidate.label, o.total_return, o.sharpe_ratio, o.max_drawdown, v.total_return, v.max_drawdown, t.total_return, t.max_drawdown, t.win_rate, t.closed_trades, t.final_value];
+    });
+    const csv = [columns, ...rows].map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a'); link.href = url; link.download = `strateji-arastirmasi-${randomResearch.symbol}.csv`; link.click(); URL.revokeObjectURL(url);
+  };
+
+  const toggleResearchIndicator = (name: IndicatorStrategy) => setResearchIndicators(current => {
+    if (current.includes(name)) return current.length > 2 ? current.filter(item => item !== name) : current;
+    return [...current, name];
+  });
+
   const metrics = result?.metrics;
   const riskEffect = result?.risk_effect;
   return <div className="app-shell">
@@ -297,6 +337,7 @@ function App() {
         <div className="mode-tabs" role="tablist" aria-label="Analiz türü">
           <button type="button" role="tab" aria-selected={mode === 'backtest'} className={mode === 'backtest' ? 'selected' : ''} onClick={() => { setMode('backtest'); setError(''); }}>Geriye dönük test</button>
           <button type="button" role="tab" aria-selected={mode === 'forecast'} className={mode === 'forecast' ? 'selected' : ''} onClick={() => { setMode('forecast'); setError(''); }}>Tahmin araştırması</button>
+          <button type="button" role="tab" aria-selected={mode === 'random'} className={mode === 'random' ? 'selected' : ''} onClick={() => { setMode('random'); setError(''); }}>Rastgele strateji araştırması</button>
         </div>
 
         {mode === 'backtest' && <>
@@ -562,6 +603,51 @@ function App() {
 
         <section className="lower-grid"><div className="data-card"><div className="card-heading"><div><h2>İşlem günlüğü</h2><p>{result ? `${closedTrades.length} kapanmış işlem` : 'Gerçekleşen alım ve satımlar'}</p></div></div><div className="table-scroll" id="trade-table"><table><thead><tr><th>Giriş</th><th>Çıkış</th><th>Kâr / zarar</th><th>Çıkış nedeni</th></tr></thead><tbody>{closedTrades.length ? closedTrades.slice().reverse().map((trade, i) => <tr key={`${trade.entry_date}-${i}`}><td>{trade.entry_date} · {formatMoney(trade.entry_price, result?.market)}</td><td>{trade.exit_date} · {formatMoney(trade.exit_price, result?.market)}</td><td className={trade.pnl >= 0 ? 'pnl-positive' : 'pnl-negative'}>{formatMoney(trade.pnl, result?.market)}</td><td><span className={`trade-pill ${trade.exit_reason === 'signal' ? 'buy' : 'sell'}`}>{trade.exit_reason === 'signal' ? 'Sinyal' : trade.exit_reason === 'stop_loss' ? 'Stop-loss' : 'Take-profit'}</span></td></tr>) : <tr><td colSpan={4} className="empty-row">{result ? 'Bu dönemde kapanmış işlem yok.' : 'Backtest sonrası işlem kayıtları listelenir.'}</td></tr>}</tbody></table></div></div>
         </section>
+        </>}
+        {mode === 'random' && <>
+          <form className="run-panel" onSubmit={event => { event.preventDefault(); void runRandomResearch(); }}>
+            <h2>Rastgele indikatör karşılaştırması</h2>
+            <p className="panel-intro">Seçtiğiniz indikatör havuzundan rastgele 2–4’lü birleşimler oluşturur. Sıralama yalnızca keşif dönemine göre yapılır; doğrulama ve test bölümleri seçimden ayrı tutulur.</p>
+            <div className="form-grid research-controls">
+              <div className="field stock-field"><span>Hisse</span><StockPicker value={symbol} market={market} onChange={setSymbol} onMarketChange={setMarket} /></div>
+              <label className="field">Veri aralığı<select value={interval} onChange={event => setInterval(event.target.value as Interval)}><option value="1d">Günlük</option><option value="1wk">Haftalık</option><option value="1mo">Aylık</option></select></label>
+              <label className="field">Deneme sayısı<select value={researchIterations} onChange={event => setResearchIterations(Number(event.target.value))}><option value={10}>10 birleşim</option><option value={20}>20 birleşim</option><option value={30}>30 birleşim</option><option value={50}>50 birleşim</option><option value={100}>100 birleşim</option></select></label>
+              <label className="field">Rastgelelik tohumu<input type="number" min="0" max="4294967295" value={researchSeed} onChange={event => setResearchSeed(event.target.value)} placeholder="Boş: her seferinde farklı" /><small>Aynı sayı, aynı kombinasyonları üretir.</small></label>
+            </div>
+            <DateRangePicker periods={backtestDatePeriods} start={start} end={end} datePeriod={datePeriod} onChoosePeriod={chooseDatePeriod} onStartChange={value => { setStart(value); setDatePeriod('custom'); }} onEndChange={value => { setEnd(value); setDatePeriod('custom'); }} />
+            <div className="research-pool">
+              <div className="section-heading"><h3>İndikatör havuzu</h3><p>En az iki indikatör seçin; her aday farklı parametreler ve oy kuralı alır.</p></div>
+              <div className="research-indicators">{(Object.keys(strategyPresets) as IndicatorStrategy[]).map(name => <label key={name} className="research-indicator"><input type="checkbox" checked={researchIndicators.includes(name)} onChange={() => toggleResearchIndicator(name)} /><span>{name}</span></label>)}</div>
+              <small>Seçili: {researchIndicators.length}/7 · her strateji AND, OR veya çoğunluk oyuyla birleştirilebilir.</small>
+            </div>
+            <div className="research-capital form-grid">
+              <label className="field">Başlangıç sermayesi<div className="input-wrap"><input value={capital} onChange={event => setCapital(event.target.value)} inputMode="numeric" /><span className="suffix">{market === 'US' ? '$' : '₺'}</span></div></label>
+              <label className="field">Komisyon<div className="input-wrap"><input value={commission} onChange={event => setCommission(event.target.value)} inputMode="decimal" /><span className="suffix">%</span></div></label>
+              <div className="risk-control">
+                <label className="risk-toggle"><input type="checkbox" checked={riskEnabled} onChange={event => setRiskEnabled(event.target.checked)} /><span>Risk çıkışlarını uygula</span></label>
+                <p>Stop-loss ve take-profit tüm adaylarda aynı uygulanır.</p>
+                {riskEnabled && <div className="risk-thresholds"><label className="field"><span>Zarar sınırı</span><input type="number" min="0.1" max="99" step="0.1" value={stopLossPct} onChange={event => setStopLossPct(event.target.value)} /></label><label className="field"><span>Kâr hedefi</span><input type="number" min="0.1" max="99" step="0.1" value={takeProfitPct} onChange={event => setTakeProfitPct(event.target.value)} /></label></div>}
+              </div>
+            </div>
+            <p className="research-caveat">Güvenilir kronolojik karşılaştırma için en az 200 veri barı gerekir. Aylık aralıkta uzun tarih dönemi seçin. Test dönemi raporlanır ancak en iyi stratejiyi seçmek için kullanılmaz.</p>
+            <button className="run-button" type="submit" disabled={busy || !symbol.trim() || researchIndicators.length < 2}>{busy ? 'Kombinasyonlar test ediliyor…' : `${researchIterations} rastgele birleşimi karşılaştır`}</button>
+            {error && <div className="error-message" role="alert">{error}</div>}
+          </form>
+          {randomResearch ? <>
+            <div className="results-heading research-results-heading"><div><h2>{randomResearch.symbol} · strateji araştırma raporu</h2><p>{randomResearch.period} · {intervalLabels[randomResearch.interval]} · {randomResearch.source} · tohum {randomResearch.seed ?? 'rastgele'}</p></div><button type="button" className="export-button" onClick={exportRandomResearch}><Download size={16} /> CSV raporunu indir</button></div>
+            <section className="metric-grid research-metrics">
+              <MetricCard label="TEST EDİLEN" value={String(randomResearch.evaluated_iterations)} detail={`${randomResearch.requested_iterations} istenen · ${randomResearch.candidates.length} benzersiz aday`} />
+              <MetricCard label="KEŞİFTE İLK SIRA" value={formatPercent(randomResearch.candidates[0].metrics.optimization.total_return)} detail={randomResearch.candidates[0].label} trend={randomResearch.candidates[0].metrics.optimization.total_return >= 0} />
+              <MetricCard label="İLK SIRANIN TEST GETİRİSİ" value={formatPercent(randomResearch.candidates[0].metrics.test.total_return)} detail="Seçim dışı son dönem · temkinli değerlendirin" trend={randomResearch.candidates[0].metrics.test.total_return >= 0} />
+              <MetricCard label="AL-TUT · TEST" value={formatPercent(randomResearch.baseline.test.total_return)} detail={`${formatMoney(randomResearch.baseline.test.final_value, randomResearch.market)} dönem sonu`} trend={randomResearch.baseline.test.total_return >= 0} />
+            </section>
+            <section className="impact-card research-report">
+              <div className="card-heading"><div><h2>Aday performans tablosu</h2><p>Adaylar yalnızca keşif getirisine göre sıralı. Test sütunu sıralamayı etkilemez.</p></div></div>
+              <div className="research-splits"><span>Keşif <strong>{randomResearch.split_bars.optimization} bar · %60</strong></span><span>Doğrulama <strong>{randomResearch.split_bars.validation} bar · %20</strong></span><span>Test <strong>{randomResearch.split_bars.test} bar · %20</strong></span><span>Risk <strong>{randomResearch.risk_enabled ? `Açık · SL ${randomResearch.stop_loss_pct}% / TP ${randomResearch.take_profit_pct}%` : 'Kapalı'}</strong></span></div>
+              <div className="table-scroll research-table-wrap"><table className="research-table"><thead><tr><th>Sıra · rastgele kombinasyon</th><th>Keşif getirisi</th><th>Doğrulama getirisi</th><th>Test getirisi</th><th>Test max düşüş</th><th>Test kazanma</th><th>Test işlem</th><th>Test son değer</th></tr></thead><tbody>{randomResearch.candidates.map(candidate => <tr key={candidate.rank}><td><strong>#{candidate.rank} · {candidate.label}</strong><small>{candidate.components.map(item => `${item.strategy}: ${indicatorParameterSummary(item)}`).join(' / ')}</small></td><td className={candidate.metrics.optimization.total_return >= 0 ? 'pnl-positive' : 'pnl-negative'}>{formatPercent(candidate.metrics.optimization.total_return)}</td><td className={candidate.metrics.validation.total_return >= 0 ? 'pnl-positive' : 'pnl-negative'}>{formatPercent(candidate.metrics.validation.total_return)}</td><td className={candidate.metrics.test.total_return >= 0 ? 'pnl-positive' : 'pnl-negative'}>{formatPercent(candidate.metrics.test.total_return)}</td><td className="pnl-negative">{formatPercent(candidate.metrics.test.max_drawdown)}</td><td>{formatPercent(candidate.metrics.test.win_rate)}</td><td>{candidate.metrics.test.closed_trades}</td><td>{formatMoney(candidate.metrics.test.final_value, randomResearch.market)}</td></tr>)}</tbody></table></div>
+              <p className="impact-footnote">{randomResearch.selection_rule} Al-tut karşılaştırması her bölümde aynı sermaye ve komisyonla ayrı simüle edilir. Geçmiş sonuçlar gelecek performansını garanti etmez.</p>
+            </section>
+          </> : <p className="forecast-empty">Bir hisse, tarih aralığı ve indikatör havuzu seçip araştırmayı başlatın. Sonuçlar bu ekranda raporlanır; otomatik olarak kayıt geçmişine eklenmez.</p>}
         </>}
         {mode === 'forecast' && <>
           <section className="run-panel">
