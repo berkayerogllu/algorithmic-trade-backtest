@@ -9,10 +9,13 @@ import { Market } from './stockSymbols';
 
 type Point = { date: string; price: number; equity: number; benchmark: number; indicators?: Record<string, number | null> };
 type Metrics = { total_return: number; sharpe_ratio: number; max_drawdown: number; win_rate: number; closed_trades: number };
+type RiskSnapshot = Metrics & { final_value: number };
+type RiskEffect = { risk_on: RiskSnapshot; risk_off: RiskSnapshot; return_delta: number; drawdown_delta: number; trade_delta: number };
+type IndicatorEffect = { strategy: Strategy; metrics: Metrics; final_value: number; combined: boolean };
 type Trade = { entry_date: string; exit_date: string; entry_price: number; exit_price: number; pnl: number; exit_reason: string };
 type Interval = '1d' | '1wk' | '1mo';
 type IndicatorLine = { key: string; name: string; kind: 'price' | 'oscillator' | 'spread' };
-type BacktestResponse = { points: Point[]; trades: Trade[]; metrics: Metrics; strategy: Strategy; symbol: string; market?: Market; period: string; source: string; parameters: Record<string, number>; interval?: Interval; components?: StrategyComponent[]; combination_method?: CombinationMethod | null; risk_enabled?: boolean; stop_loss_pct?: number; take_profit_pct?: number; indicator_lines?: IndicatorLine[] };
+type BacktestResponse = { points: Point[]; trades: Trade[]; metrics: Metrics; strategy: Strategy; symbol: string; market?: Market; period: string; source: string; parameters: Record<string, number>; interval?: Interval; components?: StrategyComponent[]; combination_method?: CombinationMethod | null; risk_enabled?: boolean; stop_loss_pct?: number; take_profit_pct?: number; indicator_lines?: IndicatorLine[]; risk_effect?: RiskEffect; indicator_effects?: IndicatorEffect[] };
 type BacktestRun = { id: string; savedAt: string; result: BacktestResponse };
 type ForecastResponse = { symbol: string; market?: Market; source: string; as_of: string; last_close: number; predicted_return: number; predicted_close: number; lower_close: number; upper_close: number; horizon: number; validation_mae_pct: number; baseline_mae_pct: number; directional_accuracy: number; validation_samples: number; beats_baseline: boolean; history: { date: string; close: number }[] };
 
@@ -70,6 +73,9 @@ const monthsAgoISO = (months: number) => {
 };
 const isIndicatorStrategy = (strategy: Strategy): strategy is IndicatorStrategy => strategy !== 'Buy & Hold' && strategy !== 'Combined';
 const strategyDisplayName = (strategy: Strategy) => strategy === 'Combined' ? 'Birleşik strateji' : strategy;
+const indicatorParameterSummary = (component: StrategyComponent) => strategyPresets[component.strategy]
+  .map(([key, label, fallback]) => `${label}: ${component.parameters[key] ?? fallback}`)
+  .join(' · ');
 const strategyParameterSummary = (result: BacktestResponse) => {
   const bars = result.interval ?? '1d';
   if (result.strategy === 'Combined') {
@@ -143,6 +149,13 @@ function App() {
     if (!query) return history;
     return history.filter(run => `${run.result.symbol} ${run.result.strategy} ${run.result.period}`.toLocaleLowerCase('tr-TR').includes(query));
   }, [history, historyQuery]);
+  const analyzedIndicators: StrategyComponent[] = result
+    ? result.strategy === 'Combined'
+      ? result.components ?? []
+      : isIndicatorStrategy(result.strategy)
+        ? [{ strategy: result.strategy, parameters: result.parameters }]
+        : []
+    : [];
   useEffect(() => {
     const checkApi = () => fetch('/api/health').then(async response => {
       const health = await response.json().catch(() => null);
@@ -265,6 +278,7 @@ function App() {
   };
 
   const metrics = result?.metrics;
+  const riskEffect = result?.risk_effect;
   return <div className="app-shell">
     <header className="topbar">
       <a href="#terminal" className="brand">piyasa.lab</a>
@@ -424,6 +438,80 @@ function App() {
           <div className="comparison-value"><span>Seçili strateji · {strategyDisplayName(result.strategy)}</span><strong className={metrics && metrics.total_return >= 0 ? 'positive' : 'pnl-negative'}>{formatPercent(metrics?.total_return ?? 0)}</strong><small>{formatMoney(chartData[chartData.length - 1].equity, result.market)} dönem sonu</small></div>
           <div className="comparison-value"><span>Al-tut baz çizgisi</span><strong>{formatPercent(benchmarkReturn)}</strong><small>{formatMoney(chartData[chartData.length - 1].benchmark, result.market)} dönem sonu</small></div>
           <div className="comparison-value comparison-edge"><span>Getiri farkı · yüzde puan</span><strong className={metrics && metrics.total_return >= benchmarkReturn ? 'positive' : 'pnl-negative'}>{formatPercentagePoints((metrics?.total_return ?? 0) - benchmarkReturn)}</strong><small>Strateji eksi al-tut</small></div>
+        </section>}
+
+        {result && <section className="impact-grid" aria-label="Strateji ve risk etkisi">
+          {riskEffect && <article className="impact-card">
+            <div className="card-heading">
+              <div><h2>Risk yönetiminin etkisi</h2><p>Aynı hisse, dönem, sinyaller ve komisyonla iki ayrı simülasyon.</p></div>
+            </div>
+            <p className="impact-note">Risk açık senaryoda stop-loss / take-profit ve pozisyon büyüklüğü sınırı uygulanır. Değerler, risk kapalı senaryoya göre farkı gösterir.</p>
+            <div className="risk-impact-table" role="table" aria-label="Risk açık ve kapalı performans karşılaştırması">
+              <div className="risk-impact-row risk-impact-header" role="row"><span role="columnheader">Ölçüm</span><span role="columnheader">Risk kapalı</span><span role="columnheader">Risk açık</span><span role="columnheader">Fark</span></div>
+              {([
+                { label: 'Toplam getiri', key: 'total_return', format: (value: number) => formatPercent(value), delta: riskEffect.return_delta, higherIsBetter: true },
+                { label: 'Azami düşüş', key: 'max_drawdown', format: (value: number) => formatPercent(value), delta: riskEffect.drawdown_delta, higherIsBetter: true },
+                { label: 'Kazanma oranı', key: 'win_rate', format: (value: number) => formatPercent(value), delta: riskEffect.risk_on.win_rate - riskEffect.risk_off.win_rate, higherIsBetter: true },
+                { label: 'Kapanan işlem', key: 'closed_trades', format: (value: number) => value.toLocaleString('tr-TR'), delta: riskEffect.trade_delta, higherIsBetter: null },
+                { label: 'Dönem sonu portföy', key: 'final_value', format: (value: number) => formatMoney(value, result.market), delta: riskEffect.risk_on.final_value - riskEffect.risk_off.final_value, higherIsBetter: true },
+              ] as const).map(row => {
+                const offValue = riskEffect.risk_off[row.key];
+                const onValue = riskEffect.risk_on[row.key];
+                const deltaLabel = row.key === 'closed_trades'
+                  ? `${row.delta > 0 ? '+' : ''}${row.delta.toLocaleString('tr-TR')}`
+                  : row.key === 'final_value'
+                    ? `${row.delta > 0 ? '+' : ''}${formatMoney(row.delta, result.market)}`
+                    : formatPercentagePoints(row.delta);
+                const favorable = row.higherIsBetter === null ? null : row.delta >= 0;
+                return <div className="risk-impact-row" role="row" key={row.key}>
+                  <span role="rowheader">{row.label}</span><span role="cell">{row.format(offValue)}</span><span role="cell">{row.format(onValue)}</span>
+                  <strong role="cell" className={favorable === null ? '' : favorable ? 'positive' : 'pnl-negative'}>{deltaLabel}</strong>
+                </div>;
+              })}
+            </div>
+            <p className="impact-footnote">Fark = risk açık − risk kapalı. Getiri, düşüş ve kazanma oranı farkları yüzde puandır; işlem farkı adet, portföy farkı para değeridir. Geçmiş dönem sonuçları sonraki dönemler için garanti vermez.</p>
+          </article>}
+
+          <article className="impact-card indicator-impact">
+            <div className="card-heading">
+              <div><h2>Seçilen indikatörler</h2><p>Bu backtestte kullanılan ayarlar, sinyaller ve son gözlem.</p></div>
+            </div>
+            {analyzedIndicators.length ? <div className="indicator-details">
+              {analyzedIndicators.map(component => {
+                const option = strategyOptions.find(item => item.name === component.strategy);
+                const lines = (result.indicator_lines ?? []).filter(line => result.strategy === 'Combined' ? line.name.startsWith(`${component.strategy} · `) : true);
+                return <section className="indicator-detail" key={component.strategy}>
+                  <div className="indicator-detail-heading"><h3>{component.strategy}</h3><span>{option?.category}</span></div>
+                  <p>{option?.summary}</p>
+                  <p className="indicator-rule"><strong>Sinyal kuralı:</strong> {option?.rule}</p>
+                  <p className="indicator-parameters">{indicatorParameterSummary(component)}</p>
+                  {lines.length > 0 && <div className="indicator-readings">
+                    {lines.map((line, index) => {
+                      const lastValue = chartData[chartData.length - 1]?.indicators?.[line.key];
+                      return <span key={line.key}><i style={{ backgroundColor: ['#176b56', '#bf713a', '#5574a5', '#9b5d83', '#738d3c', '#1596a3', '#835cb5', '#bd5546'][index % 8] }} />{line.name.slice(line.name.lastIndexOf(' · ') + 3)} <strong>{lastValue == null ? '—' : line.kind === 'price' ? formatMoney(lastValue, result.market) : lastValue.toFixed(2)}</strong></span>;
+                    })}
+                  </div>}
+                </section>;
+              })}
+            </div> : <p>Buy &amp; Hold indikatör sinyali üretmez; bu sonuç karşılaştırma çizgisi olarak kullanılır.</p>}
+          </article>
+
+          {(result.indicator_effects?.length ?? 0) > 0 && <article className="impact-card indicator-effect-card">
+            <div className="card-heading">
+              <div><h2>İndikatör seçiminin backtest etkisi</h2><p>Her indikatör tek başına ve birleşik strateji aynı ayarlarla çalıştırıldı.</p></div>
+            </div>
+            <div className="risk-impact-table indicator-effect-table" role="table" aria-label="Tekil indikatörler ve birleşik strateji karşılaştırması">
+              <div className="indicator-effect-row indicator-effect-header" role="row"><span role="columnheader">Yöntem</span><span role="columnheader">Getiri</span><span role="columnheader">Azami düşüş</span><span role="columnheader">Kapanan işlem</span><span role="columnheader">Dönem sonu</span></div>
+              {result.indicator_effects?.map(effect => <div className={`indicator-effect-row ${effect.combined ? 'combined-effect-row' : ''}`} role="row" key={effect.combined ? 'combined' : effect.strategy}>
+                <strong role="rowheader">{effect.combined ? `Birleşik · ${result.combination_method ?? 'AND'}` : effect.strategy}</strong>
+                <span role="cell" className={effect.metrics.total_return >= 0 ? 'positive' : 'pnl-negative'}>{formatPercent(effect.metrics.total_return)}</span>
+                <span role="cell" className="pnl-negative">{formatPercent(effect.metrics.max_drawdown)}</span>
+                <span role="cell">{effect.metrics.closed_trades.toLocaleString('tr-TR')}</span>
+                <span role="cell">{formatMoney(effect.final_value, result.market)}</span>
+              </div>)}
+            </div>
+            <p className="impact-footnote">Tekil indikatör satırları ayrı backtestlerdir. Birleşik sonuçla farkları gözlem verir; tek başına nedensel katkıyı kanıtlamaz.</p>
+          </article>}
         </section>}
 
         <section className="chart-card">

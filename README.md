@@ -100,6 +100,16 @@ Fiyat + indikatör grafiği kapanışı ve seçili stratejinin tüm çizgilerini
 100 bazlı karşılaştırma ekseninde, farklı renklerle gösterir. RSI/Stochastic
 50 değeri, MACD sıfır değeri bu eksende 100'e karşılık gelir.
 
+Backtest sonuçlarında risk yönetiminin etkisi, aynı hisse, tarih, sinyaller ve
+komisyonla risk açık ve kapalı senaryoları çalıştırarak karşılaştırılır. Getiri,
+azami düşüş, kazanma oranı, kapanan işlem sayısı ve dönem sonu portföy değeri
+birlikte gösterilir; fark sütununda yüzde değerleri yüzde puan olarak verilir.
+Seçilen her indikatörün açıklaması, sinyal kuralı, parametreleri ve son
+hesaplanan değerleri sonuç ekranında yer alır. Birleşik stratejide ayrıca her
+gösterge tek başına ve seçilen AND/OR/çoğunluk kuralıyla birlikte test edilir.
+Tekil ve birleşik sonuçlar ayrı backtestlerdir; karşılaştırma nedensel katkı
+kanıtı olarak yorumlanmamalıdır.
+
 Tahmin araştırması günlük fiyat, momentum, trend, oynaklık ve hacim özellikleri
 üzerinde ridge regresyonu kullanır. Son tarihsel bölüm kronolojik doğrulama için
 ayrılır. Eğitim satırları tahmin ufku kadar geriye çekilerek hedef sızıntısı

@@ -285,13 +285,70 @@ def run_backtest(request: BacktestRequest) -> dict:
         )
         results = BacktestEngine(request.initial_cash, request.commission_rate, risk).run(data, strategy)
         periods_per_year = {"1d": 252, "1wk": 52, "1mo": 12}[request.interval]
-        metrics = PerformanceAnalyzer(periods_per_year=periods_per_year).analyze(results)
+        analyzer = PerformanceAnalyzer(periods_per_year=periods_per_year)
+        metrics = analyzer.analyze(results)
+        counterfactual_risk = None if request.risk_enabled else RiskManager(
+            stop_loss_pct=request.stop_loss_pct / 100,
+            take_profit_pct=request.take_profit_pct / 100,
+        )
+        counterfactual = BacktestEngine(
+            request.initial_cash,
+            request.commission_rate,
+            counterfactual_risk if not request.risk_enabled else None,
+        ).run(data, strategy)
+        counterfactual_metrics = analyzer.analyze(counterfactual)
     except (ValueError, KeyError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Veri veya backtest hatası: {exc}") from exc
 
     first_close = float(data["Close"].iloc[0])
+    risk_on_results = results if request.risk_enabled else counterfactual
+    risk_off_results = counterfactual if request.risk_enabled else results
+    risk_on_metrics = metrics if request.risk_enabled else counterfactual_metrics
+    risk_off_metrics = counterfactual_metrics if request.risk_enabled else metrics
+    risk_effect = {
+        "risk_on": {
+            **risk_on_metrics,
+            "final_value": float(risk_on_results["Equity"].iloc[-1]),
+        },
+        "risk_off": {
+            **risk_off_metrics,
+            "final_value": float(risk_off_results["Equity"].iloc[-1]),
+        },
+        "return_delta": float(risk_on_metrics["total_return"] - risk_off_metrics["total_return"]),
+        "drawdown_delta": float(risk_on_metrics["max_drawdown"] - risk_off_metrics["max_drawdown"]),
+        "trade_delta": int(risk_on_metrics["closed_trades"] - risk_off_metrics["closed_trades"]),
+    }
+    indicator_effects: list[dict[str, Any]] = []
+    if isinstance(strategy, CombinedStrategy):
+        for component, request_component in zip(strategy.strategies, request.components):
+            component_risk = (
+                RiskManager(
+                    stop_loss_pct=request.stop_loss_pct / 100,
+                    take_profit_pct=request.take_profit_pct / 100,
+                )
+                if request.risk_enabled
+                else None
+            )
+            component_results = BacktestEngine(
+                request.initial_cash,
+                request.commission_rate,
+                component_risk,
+            ).run(data, component)
+            component_metrics = analyzer.analyze(component_results)
+            indicator_effects.append({
+                "strategy": request_component.strategy,
+                "metrics": component_metrics,
+                "final_value": float(component_results["Equity"].iloc[-1]),
+                "combined": False,
+            })
+        indicator_effects.append({
+            "strategy": "Combined",
+            "metrics": metrics,
+            "final_value": float(results["Equity"].iloc[-1]),
+            "combined": True,
+        })
     strategy_instances = strategy.strategies if isinstance(strategy, CombinedStrategy) else (strategy,)
     indicator_lines: list[dict[str, str]] = []
     indicator_values: dict[str, pd.Series] = {}
@@ -347,6 +404,8 @@ def run_backtest(request: BacktestRequest) -> dict:
         "stop_loss_pct": request.stop_loss_pct,
         "take_profit_pct": request.take_profit_pct,
         "indicator_lines": indicator_lines,
+        "risk_effect": risk_effect,
+        "indicator_effects": indicator_effects,
         "period": f"{date.fromisoformat(points[0]['date']).strftime('%d.%m.%Y')} — {date.fromisoformat(points[-1]['date']).strftime('%d.%m.%Y')}",
         "metrics": metrics,
         "points": points,
