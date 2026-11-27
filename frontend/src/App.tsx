@@ -3,7 +3,7 @@ import {
   Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer,
   ReferenceLine, Tooltip, XAxis, YAxis,
 } from 'recharts';
-import { ArrowDown, Download, Save, Trash2 } from 'lucide-react';
+import { Activity, Archive, ArrowDown, Download, Save, Shuffle, TrendingUp, Trash2 } from 'lucide-react';
 import { StockPicker } from './StockPicker';
 import { Market } from './stockSymbols';
 
@@ -401,12 +401,12 @@ function App() {
     : 0;
   return <div className="app-shell">
     <header className="topbar">
-      <a href="#terminal" className="brand">piyasa.lab</a>
+      <a href="#terminal" className="brand"><span className="brand-mark"><Activity size={18} strokeWidth={2.4} aria-hidden="true" /></span><span className="brand-copy"><strong>piyasa.lab</strong><small>Piyasa araştırma masası</small></span></a>
       <nav className="primary-nav" aria-label="Araştırma araçları">
-        <button type="button" className={`page-nav-button nav-backtest ${page === 'dashboard' && mode === 'backtest' ? 'active' : ''}`} aria-current={page === 'dashboard' && mode === 'backtest' ? 'page' : undefined} onClick={() => navigatePage('backtest')}>Strateji testi</button>
-        <button type="button" className={`page-nav-button nav-forecast ${page === 'dashboard' && mode === 'forecast' ? 'active' : ''}`} aria-current={page === 'dashboard' && mode === 'forecast' ? 'page' : undefined} onClick={() => navigatePage('forecast')}>Fiyat tahmini</button>
-        <button type="button" className={`page-nav-button nav-random ${page === 'simulations' ? 'active' : ''}`} aria-current={page === 'simulations' ? 'page' : undefined} onClick={() => navigatePage('simulations')}>Rastgele araştırma</button>
-        <button type="button" className={`page-nav-button nav-history ${page === 'history' ? 'active' : ''}`} aria-current={page === 'history' ? 'page' : undefined} onClick={() => navigatePage('history')}>Kayıtlı testler <span className="nav-count">{historyLoading ? '…' : history.length}</span></button>
+        <button type="button" className={`page-nav-button nav-backtest ${page === 'dashboard' && mode === 'backtest' ? 'active' : ''}`} aria-current={page === 'dashboard' && mode === 'backtest' ? 'page' : undefined} onClick={() => navigatePage('backtest')}><Activity size={17} aria-hidden="true" /><span>Strateji testi</span></button>
+        <button type="button" className={`page-nav-button nav-forecast ${page === 'dashboard' && mode === 'forecast' ? 'active' : ''}`} aria-current={page === 'dashboard' && mode === 'forecast' ? 'page' : undefined} onClick={() => navigatePage('forecast')}><TrendingUp size={17} aria-hidden="true" /><span>Fiyat tahmini</span></button>
+        <button type="button" className={`page-nav-button nav-random ${page === 'simulations' ? 'active' : ''}`} aria-current={page === 'simulations' ? 'page' : undefined} onClick={() => navigatePage('simulations')}><Shuffle size={17} aria-hidden="true" /><span>Rastgele araştırma</span></button>
+        <button type="button" className={`page-nav-button nav-history ${page === 'history' ? 'active' : ''}`} aria-current={page === 'history' ? 'page' : undefined} onClick={() => navigatePage('history')}><Archive size={17} aria-hidden="true" /><span>Kayıtlı testler</span><span className="nav-count">{historyLoading ? '…' : history.length}</span></button>
       </nav>
       <span className={`connection ${apiOnline ? 'is-online' : 'is-offline'}`}><i aria-hidden="true" />API {apiOnline ? 'bağlı' : 'çevrimdışı'} · DB {databaseOnline ? 'bağlı' : 'kapalı'}</span>
     </header>
