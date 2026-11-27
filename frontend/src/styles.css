@@ -608,3 +608,89 @@ button:disabled { cursor: not-allowed; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* Consistent, individually spaced controls across the application. */
+:root { --control-radius: 10px; }
+button { border-radius: var(--control-radius); }
+.primary-nav { gap: 10px; }
+.page-nav-button {
+  min-height: 44px;
+  padding: 9px 15px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  color: var(--muted);
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(20 39 68 / 4%);
+}
+.page-nav-button:hover { border-color: var(--line-strong); color: var(--ink); background: var(--surface-muted); }
+.page-nav-button.active,
+.page-nav-button.active:hover { border-color: var(--accent); color: #fff; background: var(--accent); box-shadow: 0 2px 5px rgb(20 39 68 / 14%); }
+.run-button { min-height: 48px; border-radius: 11px; color: #fff; background: var(--accent); }
+.run-button:hover:not(:disabled) { color: #fff; background: var(--accent-strong); }
+.market-switch { gap: 8px; padding: 5px; border-radius: 12px; background: #f7f9fc; }
+.market-switch button { min-height: 42px; border: 1px solid transparent; border-radius: 9px; }
+.market-switch button.selected { border-color: var(--accent); color: #fff; background: var(--accent); }
+.market-switch button.selected:hover { border-color: var(--accent-strong); color: #fff; background: var(--accent-strong); }
+.mode-tabs { flex-wrap: wrap; gap: 9px; margin-block: 14px 20px; border: 0; }
+.mode-tabs button,
+.mode-tabs button.selected {
+  min-height: 40px;
+  padding: 8px 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  background: #fff;
+  font-weight: 600;
+}
+.mode-tabs button:hover { border-color: var(--line-strong); color: var(--ink); background: var(--surface-muted); }
+.mode-tabs button.selected { border-color: var(--accent); color: #fff; background: var(--accent); }
+.strategy-option { border-color: var(--line-strong); border-radius: 12px; }
+.strategy-option:hover { border-color: #8999ae; background: var(--surface-muted); }
+.strategy-option.selected { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.component-option,
+.research-indicator { border-radius: 10px; }
+.interval-options button { border-color: var(--line-strong); border-radius: 11px; }
+.interval-options button:hover { border-color: #8999ae; background: var(--surface-muted); }
+.interval-options button.selected { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.date-periods button {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--muted);
+  background: #fff;
+}
+.date-periods button:hover { border-color: var(--line-strong); color: var(--ink); background: var(--surface-muted); }
+.date-periods button.selected { border-color: var(--accent); color: #fff; background: var(--accent); }
+.chart-mode-switch { flex-wrap: wrap; gap: 8px; padding: 0; border: 0; border-radius: 0; background: transparent; }
+.chart-mode-switch button,
+.chart-mode-switch button.selected {
+  min-height: 38px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--muted);
+  background: #fff;
+}
+.chart-mode-switch button:hover { border-color: var(--line-strong); color: var(--ink); background: var(--surface-muted); }
+.chart-mode-switch button.selected { border-color: var(--accent); color: #fff; background: var(--accent); box-shadow: none; }
+.field input, .field select,
+.research-controls select, .research-controls input,
+.forecast-controls input, .forecast-controls select,
+.history-search input, .stock-picker-control { border-radius: 9px; }
+.export-button, .history-clear { min-height: 40px; border-radius: 9px; }
+.history-clear { border-color: var(--line); background: #fff; }
+.history-clear:hover:not(:disabled) { border-color: var(--line-strong); background: var(--surface-muted); }
+.picker-toggle { border-radius: 8px; }
+.stock-option { border-radius: 8px; }
+.stock-picker-menu { border-radius: 12px; box-shadow: 0 14px 32px rgb(20 39 68 / 14%); }
+.simulation-history-section { border-radius: 12px; }
+.simulation-history-item { border-radius: 9px; }
+.simulation-history-item:hover, .simulation-history-item.active { background: var(--accent-soft); }
+.simulation-history-item.active { box-shadow: inset 0 0 0 1px var(--accent); }
+.report-jump { min-height: 44px; border-radius: 10px; color: #fff; }
+@media (max-width: 600px) {
+  .primary-nav { gap: 8px; }
+  .page-nav-button { min-height: 40px; padding-inline: 11px; }
+  .chart-mode-switch { gap: 6px; }
+  .chart-mode-switch button, .chart-mode-switch button.selected { padding-inline: 9px; }
+}
