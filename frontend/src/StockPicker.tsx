@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, LoaderCircle, Search } from 'lucide-react';
-import { Market, StockSymbol } from './stockSymbols';
+import { Market, StockSymbol, suggestedSymbols } from './stockSymbols';
 
 type Props = {
   value: string;
@@ -11,13 +11,51 @@ type SearchResponse = { symbols: { symbol: string; name: string; exchange: strin
 
 const normalize = (value: string) => value.trim().toUpperCase();
 const marketForCustomSymbol = (code: string): Market => code.endsWith('.IS') ? 'BIST' : 'US';
+const stockSearchCache = new Map<string, StockSymbol[]>();
+const stockSearchInFlight = new Map<string, Promise<StockSymbol[]>>();
+
+const searchKey = (query: string) => query.trim().toLocaleUpperCase('tr-TR');
+const filterSuggestedSymbols = (query: string) => {
+  const needle = query.trim().toLocaleLowerCase('tr-TR');
+  return needle
+    ? suggestedSymbols.filter(stock => `${stock.code} ${stock.name} ${stock.exchange}`.toLocaleLowerCase('tr-TR').includes(needle))
+    : suggestedSymbols;
+};
+
+const loadStockSymbols = (query: string): Promise<StockSymbol[]> => {
+  const key = searchKey(query);
+  const cached = stockSearchCache.get(key);
+  if (cached) return Promise.resolve(cached);
+  const pending = stockSearchInFlight.get(key);
+  if (pending) return pending;
+
+  const params = new URLSearchParams();
+  if (query.trim()) params.set('q', query.trim());
+  const request = fetch(`/api/symbols?${params.toString()}`)
+    .then(async response => {
+      if (!response.ok) throw new Error('Hisse kataloğuna erişilemiyor.');
+      const body = await response.json() as SearchResponse;
+      const symbols = body.symbols.map(item => ({
+        code: item.market === 'BIST' ? item.symbol.replace(/\.IS$/, '') : item.symbol,
+        symbol: item.symbol,
+        name: item.name,
+        exchange: item.exchange,
+        market: item.market,
+      }));
+      stockSearchCache.set(key, symbols);
+      return symbols;
+    })
+    .finally(() => stockSearchInFlight.delete(key));
+  stockSearchInFlight.set(key, request);
+  return request;
+};
 
 export function StockPicker({ value, market, onChange }: Props) {
   const searchRegion = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [query, setQuery] = useState(value ? normalize(value).replace(/\.IS$/, '') : '');
-  const [results, setResults] = useState<StockSymbol[]>([]);
+  const [results, setResults] = useState<StockSymbol[]>(suggestedSymbols);
   const [pickedStock, setPickedStock] = useState<StockSymbol | null>(null);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
@@ -29,9 +67,16 @@ export function StockPicker({ value, market, onChange }: Props) {
     : /^[A-Z][A-Z0-9.-]{0,14}$/.test(customCode);
   const selected = pickedStock?.symbol === value ? pickedStock : null;
 
+  useEffect(() => {
+    void loadStockSymbols('').catch(() => undefined);
+  }, []);
+
   useEffect(() => setActiveIndex(0), [market, query]);
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setSearching(false);
+      return;
+    }
     const closeOnOutsideClick = (event: PointerEvent) => {
       if (searchRegion.current && !searchRegion.current.contains(event.target as Node)) setOpen(false);
     };
@@ -40,47 +85,36 @@ export function StockPicker({ value, market, onChange }: Props) {
   }, [open]);
 
   useEffect(() => {
-    if (!open) {
-      setResults([]);
+    if (!open) return;
+    const searchQuery = query.trim();
+    const cached = stockSearchCache.get(searchKey(searchQuery));
+    setResults(cached ?? filterSuggestedSymbols(searchQuery));
+    setSearchError('');
+    if (searchQuery && searchQuery.length < 2) {
       setSearching(false);
-      setSearchError('');
       return;
     }
-    const controller = new AbortController();
-    const searchQuery = query.trim();
-    if (searchQuery && searchQuery.length < 2) {
-      setResults([]);
+    if (cached) {
       setSearching(false);
-      setSearchError('');
-      return () => controller.abort();
+      return;
     }
-    const timer = window.setTimeout(async () => {
-      setSearching(true);
-      setSearchError('');
-      try {
-        const params = new URLSearchParams();
-        if (searchQuery) params.set('q', searchQuery);
-        const response = await fetch(`/api/symbols?${params.toString()}`, { signal: controller.signal });
-        if (!response.ok) throw new Error('Hisse kataloğuna erişilemiyor.');
-        const body = await response.json() as SearchResponse;
-        setResults(body.symbols.map(item => ({
-          code: item.market === 'BIST' ? item.symbol.replace(/\.IS$/, '') : item.symbol,
-          symbol: item.symbol,
-          name: item.name,
-          exchange: item.exchange,
-          market: item.market,
-        })));
-      } catch (error) {
-        if (!(error instanceof DOMException && error.name === 'AbortError')) {
-          setSearchError('Hisse kataloğuna şu anda erişilemiyor. Sembol kodunu elle kullanabilirsiniz.');
-        }
-      } finally {
-        if (!controller.signal.aborted) setSearching(false);
-      }
-    }, searchQuery ? 120 : 0);
+    let current = true;
+    setSearching(true);
+    const timer = window.setTimeout(() => {
+      void loadStockSymbols(searchQuery)
+        .then(symbols => {
+          if (current) setResults(symbols);
+        })
+        .catch(() => {
+          if (current) setSearchError('Hisse kataloğuna şu anda erişilemiyor. Sembol kodunu elle kullanabilirsiniz.');
+        })
+        .finally(() => {
+          if (current) setSearching(false);
+        });
+    }, searchQuery ? 40 : 0);
     return () => {
       window.clearTimeout(timer);
-      controller.abort();
+      current = false;
     };
   }, [market, open, query]);
 
@@ -118,7 +152,7 @@ export function StockPicker({ value, market, onChange }: Props) {
         onChange={event => {
           const next = event.target.value;
           setQuery(next);
-          setResults([]);
+          setResults(filterSuggestedSymbols(next));
           setOpen(true);
           const exact = results.find(stock => stock.code === normalize(next));
           if (exact) {

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
 from uuid import UUID, uuid4
@@ -34,9 +35,8 @@ def check_connection() -> bool:
     return True
 
 
-def search_stock_universe(market: Optional[str] = None, query: str = "", limit: int = 12) -> list[dict[str, str]]:
-    """Search the unified, server-side BIST and US exchange catalog."""
-    needle = query.strip()
+@lru_cache(maxsize=512)
+def _search_stock_universe_cached(market: Optional[str], needle: str, limit: int) -> list[dict[str, str]]:
     pattern = f"%{needle}%"
     with _connect() as connection:
         rows = connection.execute(
@@ -62,6 +62,11 @@ def search_stock_universe(market: Optional[str] = None, query: str = "", limit: 
     ]
 
 
+def search_stock_universe(market: Optional[str] = None, query: str = "", limit: int = 12) -> list[dict[str, str]]:
+    """Search and reuse recent BIST and US exchange catalog results."""
+    return _search_stock_universe_cached(market, query.strip().casefold(), limit)
+
+
 def upsert_stock_universe(symbols: list[dict[str, str]]) -> None:
     """Cache valid provider discoveries in the same catalog used by search."""
     if not symbols:
@@ -77,6 +82,7 @@ def upsert_stock_universe(symbols: list[dict[str, str]]) -> None:
                    updated_at = now()""",
             symbols,
         )
+    _search_stock_universe_cached.cache_clear()
 
 
 def list_saved_backtests() -> list[dict[str, Any]]:
