@@ -8,15 +8,15 @@ web
 
 ## Users
 
-People comparing algorithmic strategies on BIST and US historical market data. The interface should also make the Python techniques used by the academic project understandable to its students and reviewers.
+People comparing algorithmic strategies on BIST and US historical market data.
 
 ## Product Purpose
 
-Run historical simulations, compare indicator strategies with a buy-and-hold baseline, inspect risk and performance, and review saved runs. Help users understand what each result represents and which Python component produced it.
+Run historical simulations, compare indicator strategies with a buy-and-hold baseline, inspect risk and performance, and review saved runs.
 
 ## Positioning
 
-The project combines a practical backtesting workspace with a transparent view of its Python architecture. A distinct advantage beyond that combination has not been established.
+The project provides a practical backtesting workspace for historical market research. A distinct advantage beyond that purpose has not been established.
 
 ## Operating Context
 
@@ -26,7 +26,6 @@ Users choose a market and symbol, configure a strategy and period, run a simulat
 
 - The analysis engine and API are Python; the browser interface is React and TypeScript.
 - Supported research includes indicator strategies, combined signals, risk exits, historical comparisons, random strategy research, forecasts, and saved backtests.
-- Python concepts should be explained in context with short notes and an optional architecture panel.
 - Preserve the existing workflows and calculations while improving presentation and navigation.
 - There is no generative-AI trading assistant or live-order workflow.
 
@@ -45,6 +44,5 @@ Users choose a market and symbol, configure a strategy and period, run a simulat
 ## Product Principles
 
 - Make historical assumptions and comparisons easy to see.
-- Keep the analysis flow primary and educational explanations optional but discoverable.
-- Explain metrics and Python components in plain language.
+- Keep the analysis flow primary and explain the meaning of results in plain language.
 - Never present a historical result or forecast as a guarantee.

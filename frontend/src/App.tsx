@@ -5,7 +5,6 @@ import {
 } from 'recharts';
 import { ArrowDown, Download, Save, Trash2 } from 'lucide-react';
 import { StockPicker } from './StockPicker';
-import { PythonArchitecturePanel, strategyPythonNote } from './PythonArchitecturePanel';
 import { Market } from './stockSymbols';
 
 type Point = { date: string; price: number; equity: number; benchmark: number; indicators?: Record<string, number | null> };
@@ -424,7 +423,7 @@ function App() {
           <h2>Backtest ayarları</h2>
           <p className="panel-intro">Bir hisse ve sinyal yöntemi seçin. Her stratejinin sonucu aynı dönem için al-tut ile karşılaştırılır.</p>
           <div className="form-grid configuration-grid">
-            <div className="field stock-field"><span>Hisse</span><StockPicker value={symbol} market={market} onChange={setSymbol} onMarketChange={setMarket} /><small className="field-note"><code>DataLoader</code> veriyi OHLCV tablosu olarak yükler ve doğrular.</small></div>
+            <div className="field stock-field"><span>Hisse</span><StockPicker value={symbol} market={market} onChange={setSymbol} onMarketChange={setMarket} /></div>
             <label className="field"><span>Başlangıç sermayesi</span><div className="input-wrap"><input value={capital} onChange={e => setCapital(e.target.value)} inputMode="numeric" aria-label="Başlangıç sermayesi" /><span className="suffix">{market === 'US' ? '$' : '₺'}</span></div></label>
             <label className="field"><span>Komisyon</span><div className="input-wrap"><input value={commission} onChange={e => setCommission(e.target.value)} inputMode="decimal" aria-label="Komisyon oranı" /><span className="suffix">%</span></div></label>
           </div>
@@ -438,7 +437,7 @@ function App() {
               </button>)}
             </div>
             <div className="strategy-detail" aria-live="polite">
-              <div className="strategy-rule"><span>Bu strateji ne yapar?</span><p>{strategyOptions.find(option => option.name === strategy)?.rule}{strategy === 'Buy & Hold' && riskEnabled ? ' Risk sınırları açıksa daha erken çıkabilir.' : ''}</p><small className="python-inline-note">Python · {strategyPythonNote(strategy)}</small></div>
+              <div className="strategy-rule"><span>Bu strateji ne yapar?</span><p>{strategyOptions.find(option => option.name === strategy)?.rule}{strategy === 'Buy & Hold' && riskEnabled ? ' Risk sınırları açıksa daha erken çıkabilir.' : ''}</p></div>
               {isIndicatorStrategy(strategy) && <div className="strategy-parameters">
                 <span className="parameter-heading">İndikatör ayarları</span>
                 <div className={`parameter-fields count-${strategyPresets[strategy].length}`}>
@@ -512,7 +511,6 @@ function App() {
                   <label className="field"><span>Kâr al</span><div className="input-wrap"><input type="number" min="0.1" max="99.9" step="0.1" required value={takeProfitPct} onChange={event => setTakeProfitPct(event.target.value)} aria-label="Kâr al yüzdesi" /><span className="suffix">%</span></div></label>
                 </div>
                 <p>Her pozisyonun giriş fiyatına göre kapanışta uygulanır.</p>
-                <small className="python-inline-note">Python · <code>RiskManager</code> pozisyon büyüklüğünü ve çıkış koşullarını yönetir.</small>
               </> : <p>Pozisyonlar yalnızca strateji sinyaliyle kapanır.</p>}
             </div>
             <button className="run-button" disabled={busy || !symbol.trim() || (strategy === 'Combined' && selectedComponents.length < 2)}>
@@ -532,7 +530,6 @@ function App() {
             <MetricCard label="Azami düşüş" value={formatPercent(metrics!.max_drawdown)} detail="Zirveden en düşük noktaya" trend={false} />
             <MetricCard label="Kazanma oranı" value={formatPercent(metrics!.win_rate)} detail={`${metrics!.closed_trades} kapanan işlem`} />
           </section>
-          <p className="python-inline-note performance-python-note">Python · <code>PerformanceAnalyzer</code> portföy eğrisinden getiri, Sharpe, düşüş ve işlem oranlarını hesaplar.</p>
         </> : <section className="backtest-empty-state" aria-live="polite">
           <div><h2>Backtest sonucu burada oluşacak</h2><p>Hisseyi ve stratejiyi seçin, tarih aralığını belirleyin ve simülasyonu çalıştırın.</p></div>
           <div className="empty-state-path"><span>Hisse + dönem</span><span>Strateji sinyali</span><span>Portföy sonucu</span></div>
@@ -803,7 +800,6 @@ function App() {
             <p className="forecast-note">Tahmin geçmiş örüntülerden üretilen istatistiksel bir tahmindir. Hata aralığı geçmiş doğrulama hatalarını özetler, gelecekteki sonucu garanti etmez.</p>
           </> : <p className="forecast-empty">Bir BIST hisse kodu ve tahmin ufku seçip geçmiş veriyi çalıştırın.</p>}
         </>}
-        <PythonArchitecturePanel view={page === 'simulations' || mode === 'random' ? 'research' : page === 'history' ? 'history' : mode} strategy={strategy} riskEnabled={riskEnabled} />
         <footer className="app-footer"><span>piyasa.lab · Akademik simülasyon aracı</span><span>Gerçek emir gönderilmez</span></footer>
     </main>
   </div>;
