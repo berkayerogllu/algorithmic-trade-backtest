@@ -129,7 +129,7 @@ function App() {
   const [interval, setInterval] = useState<Interval>('1d');
   const [mode, setMode] = useState<'backtest' | 'forecast' | 'random'>(() => initialPage === 'simulations' ? 'random' : initialPage === 'forecast' ? 'forecast' : 'backtest');
   const [horizon, setHorizon] = useState(5);
-  const [symbol, setSymbol] = useState('THYAO.IS');
+  const [symbol, setSymbol] = useState('');
   const [start, setStart] = useState(() => monthsAgoISO(36));
   const [end, setEnd] = useState(todayISO);
   const [datePeriod, setDatePeriod] = useState('3y');
@@ -423,7 +423,7 @@ function App() {
           <h2>Backtest ayarları</h2>
           <p className="panel-intro">Bir hisse ve sinyal yöntemi seçin. Her stratejinin sonucu aynı dönem için al-tut ile karşılaştırılır.</p>
           <div className="form-grid configuration-grid">
-            <div className="field stock-field"><span>Hisse</span><StockPicker value={symbol} market={market} onChange={setSymbol} onMarketChange={setMarket} /></div>
+            <div className="field stock-field"><span>Hisse</span><StockPicker value={symbol} market={market} onChange={(nextSymbol, nextMarket) => { setSymbol(nextSymbol); setMarket(nextMarket); }} /></div>
             <label className="field"><span>Başlangıç sermayesi</span><div className="input-wrap"><input value={capital} onChange={e => setCapital(e.target.value)} inputMode="numeric" aria-label="Başlangıç sermayesi" /><span className="suffix">{market === 'US' ? '$' : '₺'}</span></div></label>
             <label className="field"><span>Komisyon</span><div className="input-wrap"><input value={commission} onChange={e => setCommission(e.target.value)} inputMode="decimal" aria-label="Komisyon oranı" /><span className="suffix">%</span></div></label>
           </div>
@@ -703,7 +703,7 @@ function App() {
             <h2>Rastgele indikatör karşılaştırması</h2>
             <p className="panel-intro">Seçtiğiniz indikatör havuzundan rastgele 2–4’lü birleşimler oluşturur. Sıralama yalnızca keşif dönemine göre yapılır; doğrulama ve test bölümleri seçimden ayrı tutulur.</p>
             <div className="form-grid research-controls">
-              <div className="field stock-field"><span>Hisse</span><StockPicker value={symbol} market={market} onChange={setSymbol} onMarketChange={setMarket} /></div>
+              <div className="field stock-field"><span>Hisse</span><StockPicker value={symbol} market={market} onChange={(nextSymbol, nextMarket) => { setSymbol(nextSymbol); setMarket(nextMarket); }} /></div>
               <label className="field">Veri aralığı<select value={interval} onChange={event => setInterval(event.target.value as Interval)}><option value="1d">Günlük</option><option value="1wk">Haftalık</option><option value="1mo">Aylık</option></select></label>
               <label className="field">Deneme sayısı<select value={researchIterations} onChange={event => setResearchIterations(Number(event.target.value))}><option value={10}>10 birleşim</option><option value={20}>20 birleşim</option><option value={30}>30 birleşim</option><option value={50}>50 birleşim</option><option value={100}>100 birleşim</option></select></label>
               <label className="field">Rastgelelik tohumu<input type="number" min="0" max="4294967295" value={researchSeed} onChange={event => setResearchSeed(event.target.value)} placeholder="Boş: her seferinde farklı" /><small>Aynı sayı, aynı kombinasyonları üretir.</small></label>
@@ -780,7 +780,7 @@ function App() {
             <h2>Geçmiş veriden tahmin</h2>
             <p className="forecast-intro">Geçmiş fiyat, trend, oynaklık ve hacim özellikleriyle ileri dönem getirisini tahmin eder. Model, son dönem verisinde kronolojik olarak doğrulanır.</p>
             <div className="form-grid forecast-controls">
-              <div className="field stock-field"><span>Hisse seçimi</span><StockPicker value={symbol} market={market} onChange={setSymbol} onMarketChange={setMarket} /></div>
+              <div className="field stock-field"><span>Hisse seçimi</span><StockPicker value={symbol} market={market} onChange={(nextSymbol, nextMarket) => { setSymbol(nextSymbol); setMarket(nextMarket); }} /></div>
               <label className="field">Tahmin ufku<select value={horizon} onChange={event => setHorizon(Number(event.target.value))}><option value={1}>1 işlem günü</option><option value={5}>5 işlem günü</option><option value={20}>20 işlem günü</option></select></label>
             </div>
             <DateRangePicker periods={forecastDatePeriods} start={start} end={end} datePeriod={datePeriod} onChoosePeriod={chooseDatePeriod} onStartChange={value => { setStart(value); setDatePeriod('custom'); }} onEndChange={value => { setEnd(value); setDatePeriod('custom'); }} />

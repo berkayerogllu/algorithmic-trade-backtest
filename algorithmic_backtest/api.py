@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
-from time import monotonic
 from pathlib import Path
 import re
 from typing import Any, Literal, Optional
 from uuid import UUID
 
 import pandas as pd
-import yfinance as yf
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -38,7 +36,6 @@ from .strategies import (
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 Market = Literal["BIST", "US"]
 Interval = Literal["1d", "1wk", "1mo"]
-_SYMBOL_SEARCH_CACHE: dict[tuple[str, str], tuple[float, list[dict[str, str]]]] = {}
 app = FastAPI(title="BIST Backtest API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
@@ -175,89 +172,14 @@ def clear_backtest_history() -> None:
 @app.get("/api/symbols")
 def search_symbols(
     q: str = Query(default="", max_length=64),
-    market: Market = "BIST",
+    market: Optional[Market] = None,
 ) -> dict[str, list[dict[str, str]]]:
     query = q.strip()[:64]
     try:
         symbols = database.search_stock_universe(market, query, 12)
     except (psycopg.Error, RuntimeError) as exc:
         raise HTTPException(status_code=503, detail="Hisse kataloğuna şu anda ulaşılamıyor.") from exc
-
-    exact_symbol = query.upper()
-    if market == "BIST" and not exact_symbol.endswith(".IS"):
-        exact_symbol += ".IS"
-    has_exact = any(item["symbol"].upper() == exact_symbol for item in symbols)
-    if len(query) < 2 or len(symbols) >= 12 or has_exact:
-        return {"symbols": symbols}
-
-    cache_key = (market, query.casefold())
-    cached = _SYMBOL_SEARCH_CACHE.get(cache_key)
-    if cached and monotonic() - cached[0] < 300:
-        discovered = cached[1]
-    else:
-        try:
-            search = yf.Search(query, max_results=30, news_count=0, lists_count=0, include_cb=False, timeout=8)
-            discovered = []
-            seen = {item["symbol"] for item in symbols}
-            for quote in search.quotes:
-                ticker = str(quote.get("symbol", "")).upper()
-                if not ticker or ticker in seen or quote.get("quoteType") != "EQUITY":
-                    continue
-                exchange = str(quote.get("exchDisp") or quote.get("exchange") or "").strip()
-                exchange_code = str(quote.get("exchange", "")).upper()
-                if market == "BIST":
-                    if not ticker.endswith(".IS"):
-                        continue
-                elif not _is_us_listing(exchange, exchange_code) or ticker.endswith(".IS"):
-                    continue
-                seen.add(ticker)
-                discovered.append({
-                    "symbol": ticker,
-                    "name": str(quote.get("longname") or quote.get("shortname") or ticker),
-                    "exchange": _exchange_label(market, exchange, exchange_code),
-                    "market": market,
-                })
-                if len(discovered) >= 12:
-                    break
-        except Exception:
-            # Keep database matches usable when the optional live discovery service is down.
-            if not symbols:
-                raise HTTPException(status_code=502, detail="Hisse arama sağlayıcısına şu anda ulaşılamıyor.")
-            discovered = []
-        if discovered:
-            try:
-                database.upsert_stock_universe(discovered)
-            except (psycopg.Error, RuntimeError) as exc:
-                raise HTTPException(status_code=503, detail="Bulunan hisse kataloğa eklenemedi.") from exc
-        _SYMBOL_SEARCH_CACHE[cache_key] = (monotonic(), discovered)
-    merged = {item["symbol"]: item for item in symbols}
-    merged.update({item["symbol"]: item for item in discovered})
-    return {"symbols": list(merged.values())[:12]}
-
-
-def _is_us_listing(exchange: str, exchange_code: str) -> bool:
-    known_codes = {"NMS", "NGM", "NCM", "NYQ", "ASE", "PCX", "BTS", "NYS", "NAS", "NGS"}
-    if exchange_code in known_codes:
-        return True
-    label = exchange.upper().replace(" ", "")
-    return any(name in label for name in ("NASDAQ", "NYSE", "NEWYORKSTOCKEXCHANGE", "NYSEARCA", "NYSEAMERICAN"))
-
-
-def _exchange_label(market: Market, exchange: str, exchange_code: str) -> str:
-    if market == "BIST":
-        return "Borsa İstanbul"
-    exchange_labels = {
-        "NMS": "NASDAQ",
-        "NGM": "NASDAQ",
-        "NCM": "NASDAQ",
-        "NAS": "NASDAQ",
-        "NGS": "NASDAQ",
-        "NYQ": "NYSE",
-        "NYS": "NYSE",
-        "ASE": "NYSE American",
-        "PCX": "NYSE Arca",
-    }
-    return exchange_labels.get(exchange_code, exchange or "ABD borsası")
+    return {"symbols": symbols}
 
 
 @app.post("/api/backtest")

@@ -34,7 +34,7 @@ def check_connection() -> bool:
     return True
 
 
-def search_stock_universe(market: str, query: str = "", limit: int = 12) -> list[dict[str, str]]:
+def search_stock_universe(market: Optional[str] = None, query: str = "", limit: int = 12) -> list[dict[str, str]]:
     """Search the unified, server-side BIST and US exchange catalog."""
     needle = query.strip()
     pattern = f"%{needle}%"
@@ -42,7 +42,7 @@ def search_stock_universe(market: str, query: str = "", limit: int = 12) -> list
         rows = connection.execute(
             """select symbol, company_name, exchange, market
                from app_data.stock_universe
-               where market = %s
+               where (%s::text is null or market = %s)
                  and (%s = '' or symbol ilike %s
                       or translate(lower(company_name), 'çğıöşü', 'cgiosu') ilike translate(lower(%s), 'çğıöşü', 'cgiosu')
                       or exchange ilike %s)
@@ -54,7 +54,7 @@ def search_stock_universe(market: str, query: str = "", limit: int = 12) -> list
                  sort_order asc,
                  company_name asc
                limit %s""",
-            (market, needle, pattern, pattern, pattern, needle, f"{needle}%", f"{needle}%", limit),
+            (market, market, needle, pattern, pattern, pattern, needle, f"{needle}%", f"{needle}%", limit),
         ).fetchall()
     return [
         {"symbol": row["symbol"], "name": row["company_name"], "exchange": row["exchange"], "market": row["market"]}

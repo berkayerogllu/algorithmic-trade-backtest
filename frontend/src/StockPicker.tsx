@@ -1,35 +1,35 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, LoaderCircle, Search } from 'lucide-react';
-import { defaultSymbols, Market, StockSymbol } from './stockSymbols';
+import { Check, LoaderCircle, Search } from 'lucide-react';
+import { Market, StockSymbol } from './stockSymbols';
 
 type Props = {
   value: string;
   market: Market;
-  onChange: (symbol: string) => void;
-  onMarketChange: (market: Market) => void;
+  onChange: (symbol: string, market: Market) => void;
 };
 type SearchResponse = { symbols: { symbol: string; name: string; exchange: string; market: Market }[] };
 
-const normalize = (value: string) => value.trim().toUpperCase().replace(/\.IS$/, '');
-const symbolForCode = (code: string, market: Market) => market === 'BIST' ? `${code}.IS` : code;
+const normalize = (value: string) => value.trim().toUpperCase();
+const marketForCustomSymbol = (code: string): Market => code.endsWith('.IS') ? 'BIST' : 'US';
 
-export function StockPicker({ value, market, onChange, onMarketChange }: Props) {
+export function StockPicker({ value, market, onChange }: Props) {
   const searchRegion = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [query, setQuery] = useState(normalize(value));
+  const [query, setQuery] = useState(value ? normalize(value).replace(/\.IS$/, '') : '');
   const [results, setResults] = useState<StockSymbol[]>([]);
-  const [pickedStock, setPickedStock] = useState<StockSymbol | null>(() => Object.values(defaultSymbols).find(stock => stock.symbol === value) ?? null);
+  const [pickedStock, setPickedStock] = useState<StockSymbol | null>(null);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
   const customCode = normalize(query);
-  const canUseCustom = market === 'BIST'
-    ? /^[A-Z0-9]{1,12}$/.test(customCode)
+  const customMarket = marketForCustomSymbol(customCode);
+  const customSymbol = customMarket === 'BIST' ? customCode : customCode.replace(/\.IS$/, '');
+  const canUseCustom = customMarket === 'BIST'
+    ? /^[A-Z0-9]{1,12}\.IS$/.test(customCode)
     : /^[A-Z][A-Z0-9.-]{0,14}$/.test(customCode);
   const selected = pickedStock?.symbol === value ? pickedStock : null;
 
   useEffect(() => setActiveIndex(0), [market, query]);
-  useEffect(() => setQuery(normalize(value)), [value]);
   useEffect(() => {
     if (!open) return;
     const closeOnOutsideClick = (event: PointerEvent) => {
@@ -47,17 +47,24 @@ export function StockPicker({ value, market, onChange, onMarketChange }: Props) 
       return;
     }
     const controller = new AbortController();
+    const searchQuery = query.trim();
+    if (searchQuery && searchQuery.length < 2) {
+      setResults([]);
+      setSearching(false);
+      setSearchError('');
+      return () => controller.abort();
+    }
     const timer = window.setTimeout(async () => {
       setSearching(true);
       setSearchError('');
       try {
-        const params = new URLSearchParams({ market });
-        if (query.trim()) params.set('q', query.trim());
+        const params = new URLSearchParams();
+        if (searchQuery) params.set('q', searchQuery);
         const response = await fetch(`/api/symbols?${params.toString()}`, { signal: controller.signal });
         if (!response.ok) throw new Error('Hisse kataloğuna erişilemiyor.');
         const body = await response.json() as SearchResponse;
         setResults(body.symbols.map(item => ({
-          code: market === 'BIST' ? item.symbol.replace(/\.IS$/, '') : item.symbol,
+          code: item.market === 'BIST' ? item.symbol.replace(/\.IS$/, '') : item.symbol,
           symbol: item.symbol,
           name: item.name,
           exchange: item.exchange,
@@ -70,7 +77,7 @@ export function StockPicker({ value, market, onChange, onMarketChange }: Props) 
       } finally {
         if (!controller.signal.aborted) setSearching(false);
       }
-    }, 180);
+    }, searchQuery ? 120 : 0);
     return () => {
       window.clearTimeout(timer);
       controller.abort();
@@ -79,60 +86,48 @@ export function StockPicker({ value, market, onChange, onMarketChange }: Props) 
 
   const choose = (stock: StockSymbol) => {
     setPickedStock(stock);
-    onChange(stock.symbol);
+    onChange(stock.symbol, stock.market);
     setQuery(stock.code);
     setOpen(false);
   };
 
   const chooseCustom = () => {
-    const symbol = symbolForCode(customCode, market);
-    setPickedStock({ code: customCode, symbol, name: customCode, exchange: market === 'BIST' ? 'Borsa İstanbul' : 'ABD borsası', market });
-    onChange(symbol);
-    setQuery(customCode);
-    setOpen(false);
-  };
-
-  const changeMarket = (nextMarket: Market) => {
-    if (nextMarket === market) return;
-    const defaultStock = defaultSymbols[nextMarket];
-    setPickedStock(defaultStock);
-    onMarketChange(nextMarket);
-    onChange(defaultStock.symbol);
-    setQuery(defaultStock.code);
-    setResults([]);
+    const symbol = customMarket === 'BIST' ? customCode : customSymbol;
+    setPickedStock({ code: customSymbol.replace(/\.IS$/, ''), symbol, name: customSymbol.replace(/\.IS$/, ''), exchange: customMarket === 'BIST' ? 'Borsa İstanbul' : 'ABD borsası', market: customMarket });
+    onChange(symbol, customMarket);
+    setQuery(customSymbol.replace(/\.IS$/, ''));
     setOpen(false);
   };
 
   return <div className="stock-picker">
-    <div className="market-switch" role="group" aria-label="Hisse piyasası">
-      <button type="button" className={market === 'BIST' ? 'selected' : ''} aria-pressed={market === 'BIST'} onClick={() => changeMarket('BIST')}>
-        <span>Türkiye</span><small>BIST</small>
-      </button>
-      <button type="button" className={market === 'US' ? 'selected' : ''} aria-pressed={market === 'US'} onClick={() => changeMarket('US')}>
-        <span>Amerika</span><small>NYSE · Nasdaq</small>
-      </button>
-    </div>
     <div className="stock-picker-search" ref={searchRegion}>
     <div className="stock-picker-control">
       <Search size={17} aria-hidden="true" />
       <input
         role="combobox"
-        aria-label={`${market === 'BIST' ? 'BIST' : 'ABD'} hisse kodu veya şirket adı ara`}
+        aria-label="Türkiye ve ABD hisselerinde ara"
         aria-autocomplete="list"
         aria-expanded={open}
         aria-controls="stock-picker-options"
         aria-activedescendant={open && results[activeIndex] ? `stock-option-${results[activeIndex].symbol.replace(/[^a-zA-Z0-9_-]/g, '-')}` : undefined}
         autoComplete="off"
         maxLength={60}
-        placeholder="Hisse kodu veya şirket adı"
+        placeholder="Şirket adı veya sembol ara"
         value={query}
         onFocus={() => setOpen(true)}
         onChange={event => {
           const next = event.target.value;
           setQuery(next);
+          setResults([]);
           setOpen(true);
-          const exact = results.find(stock => stock.market === market && stock.code === normalize(next));
-          if (exact) onChange(exact.symbol);
+          const exact = results.find(stock => stock.code === normalize(next));
+          if (exact) {
+            setPickedStock(exact);
+            onChange(exact.symbol, exact.market);
+          } else {
+            setPickedStock(null);
+            onChange('', market);
+          }
         }}
         onKeyDown={event => {
           if (event.key === 'Escape') setOpen(false);
@@ -151,13 +146,11 @@ export function StockPicker({ value, market, onChange, onMarketChange }: Props) 
           }
         }}
       />
-      {searching ? <LoaderCircle className="picker-spinner" size={16} aria-label="Aranıyor" /> : <button type="button" className="picker-toggle" aria-label={open ? 'Hisse listesini kapat' : 'Hisse listesini aç'} onClick={() => setOpen(!open)}>
-        <ChevronDown size={16} aria-hidden="true" />
-      </button>}
+      {searching && <LoaderCircle className="picker-spinner" size={16} aria-label="Aranıyor" />}
     </div>
     {open && <div className="stock-picker-menu">
-      <div className="picker-caption">{query.trim() ? 'Arama sonuçları' : 'Hisse kataloğu'}</div>
-      <div id="stock-picker-options" className="stock-picker-options" role="listbox" aria-label={`${market === 'BIST' ? 'BIST' : 'ABD'} hisse arama sonuçları`}>
+      <div className="picker-caption">{query.trim() ? 'Arama sonuçları' : 'Öne çıkan hisseler'}</div>
+      <div id="stock-picker-options" className="stock-picker-options" role="listbox" aria-label="Türkiye ve ABD hisse arama sonuçları">
         {results.map((stock, index) => <button
           type="button"
           role="option"
@@ -174,15 +167,15 @@ export function StockPicker({ value, market, onChange, onMarketChange }: Props) 
           <span className="stock-exchange-tag">{stock.exchange}</span>
           {value === stock.symbol && <Check size={16} aria-hidden="true" />}
         </button>)}
-        {!results.length && !searching && (!canUseCustom || !query.trim()) && <p className="picker-empty">{query.trim() ? 'Eşleşme bulunamadı. Kodu kontrol edin veya şirket adını deneyin.' : 'Katalogda hisse bulmak için kod ya da şirket adı yazın.'}</p>}
+        {!results.length && !searching && (!canUseCustom || !query.trim()) && <p className="picker-empty">{query.trim() ? query.trim().length < 2 ? 'Aramak için en az iki karakter yazın.' : 'Eşleşme bulunamadı. Şirket adını veya sembolü kontrol edin.' : 'Öne çıkan hisse bulunamadı.'}</p>}
       </div>
       {searchError && <p className="picker-search-error" role="status">{searchError}</p>}
       {!results.length && !searching && canUseCustom && query.trim() && <button type="button" className="custom-symbol" onMouseDown={event => event.preventDefault()} onClick={chooseCustom}>
-        <span><strong>{customCode}</strong> sembolünü kullan</span><span className="custom-symbol-hint">{market === 'BIST' ? 'Borsa İstanbul · .IS' : 'ABD · Yahoo Finance'}</span>
+        <span><strong>{customSymbol.replace(/\.IS$/, '')}</strong> sembolünü kullan</span><span className="custom-symbol-hint">{customMarket === 'BIST' ? 'Borsa İstanbul · .IS' : 'ABD borsası'}</span>
       </button>}
-      <p className="picker-footnote">Sembol veya şirket adıyla arayın; Türkiye ve ABD piyasaları arasında seçim yapabilirsiniz.</p>
+      <p className="picker-footnote">Türkiye ve ABD hisseleri aynı listede aranır. Özel BIST sembollerinde .IS uzantısını kullanın.</p>
     </div>}
     </div>
-    <span className="picker-selected">Seçili: <strong>{selected ? `${selected.code} · ${selected.name}` : value || 'Hisse seçin'}</strong></span>
+    {selected && <span className="picker-selected"><span className="market-chip">{selected.market === 'BIST' ? 'BIST' : selected.exchange}</span><strong>{selected.code} · {selected.name}</strong></span>}
   </div>;
 }
