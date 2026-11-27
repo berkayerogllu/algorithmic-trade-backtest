@@ -18,12 +18,14 @@ class BacktestEngine:
     def __init__(
         self,
         initial_cash: float = 100_000.0,
-        commission_rate: float = 0.001,
+        commission_rate: float = 0.0,
         risk_manager: RiskManager | None = None,
+        commission_per_trade: float = 0.0,
     ) -> None:
         self.initial_cash = initial_cash
         self.commission_rate = commission_rate
         self.risk_manager = risk_manager
+        self.commission_per_trade = commission_per_trade
 
     def run(self, data: pd.DataFrame, strategy: BaseStrategy) -> pd.DataFrame:
         if data.empty:
@@ -41,7 +43,7 @@ class BacktestEngine:
         if signals.isna().any() or not signals.isin([0, 1]).all():
             raise BacktestError("Strategy signals must contain only 0 and 1")
 
-        portfolio = Portfolio(self.initial_cash, self.commission_rate)
+        portfolio = Portfolio(self.initial_cash, self.commission_rate, self.commission_per_trade)
         rows = []
         for index, (date, price) in enumerate(close.items()):
             # A close-derived signal can only be acted on at the following bar.

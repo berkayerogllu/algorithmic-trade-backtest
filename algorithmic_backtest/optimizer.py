@@ -35,7 +35,7 @@ class StrategyOptimizer:
         metric: str = "sharpe_ratio",
         n_jobs: int = 1,
         initial_cash: float = 100_000.0,
-        commission_rate: float = 0.001,
+        commission_rate: float = 0.0,
         risk_manager: RiskManager | None = None,
     ) -> pd.DataFrame:
         """Evaluate every parameter combination on the supplied data only.

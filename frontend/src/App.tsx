@@ -136,7 +136,8 @@ function App() {
   const [parameters, setParameters] = useState<Record<string, string>>({});
   const [showIndicatorComparison, setShowIndicatorComparison] = useState(false);
   const [capital, setCapital] = useState('100000');
-  const [commission, setCommission] = useState('0.1');
+  const [commission, setCommission] = useState('0');
+  const [commissionMode, setCommissionMode] = useState<'percentage' | 'per_trade'>('percentage');
   const [riskEnabled, setRiskEnabled] = useState(true);
   const [stopLossPct, setStopLossPct] = useState('5');
   const [takeProfitPct, setTakeProfitPct] = useState('10');
@@ -153,6 +154,8 @@ function App() {
   const [researchIterations, setResearchIterations] = useState(30);
   const [researchSeed, setResearchSeed] = useState('4015');
   const researchResultsRef = useRef<HTMLDivElement>(null);
+  const commissionRate = commissionMode === 'percentage' ? Number(commission) / 100 : 0;
+  const commissionPerTrade = commissionMode === 'per_trade' ? Number(commission) : 0;
 
   const scrollToResearchResults = () => {
     window.requestAnimationFrame(() => researchResultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
@@ -233,7 +236,7 @@ function App() {
         : [];
       const response = await fetch('/api/backtest', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol: symbol.trim(), market, strategy, interval, components, combination_method: combinationMethod, start_date: start, end_date: end || null, parameters: isIndicatorStrategy(strategy) ? makeParameters(strategy) : {}, initial_cash: Number(capital), commission_rate: Number(commission) / 100, risk_enabled: riskEnabled, stop_loss_pct: Number(stopLossPct), take_profit_pct: Number(takeProfitPct) }),
+        body: JSON.stringify({ symbol: symbol.trim(), market, strategy, interval, components, combination_method: combinationMethod, start_date: start, end_date: end || null, parameters: isIndicatorStrategy(strategy) ? makeParameters(strategy) : {}, initial_cash: Number(capital), commission_rate: commissionRate, commission_per_trade: commissionPerTrade, risk_enabled: riskEnabled, stop_loss_pct: Number(stopLossPct), take_profit_pct: Number(takeProfitPct) }),
       });
       if (!response.ok) {
         const body = await response.json().catch(() => null);
@@ -344,7 +347,7 @@ function App() {
     try {
       const response = await fetch('/api/random-strategy-research', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol: symbol.trim(), market, interval, indicators: researchIndicators, iterations: researchIterations, seed: researchSeed.trim() ? Number(researchSeed) : null, start_date: start, end_date: end || null, initial_cash: Number(capital), commission_rate: Number(commission) / 100, risk_enabled: riskEnabled, stop_loss_pct: Number(stopLossPct), take_profit_pct: Number(takeProfitPct) }),
+        body: JSON.stringify({ symbol: symbol.trim(), market, interval, indicators: researchIndicators, iterations: researchIterations, seed: researchSeed.trim() ? Number(researchSeed) : null, start_date: start, end_date: end || null, initial_cash: Number(capital), commission_rate: commissionRate, commission_per_trade: commissionPerTrade, risk_enabled: riskEnabled, stop_loss_pct: Number(stopLossPct), take_profit_pct: Number(takeProfitPct) }),
       });
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(typeof body?.detail === 'string' ? body.detail : 'Rastgele strateji araştırması çalıştırılamadı.');
@@ -425,7 +428,7 @@ function App() {
           <div className="form-grid configuration-grid">
             <div className="field stock-field"><span>Hisse</span><StockPicker value={symbol} market={market} onChange={(nextSymbol, nextMarket) => { setSymbol(nextSymbol); setMarket(nextMarket); }} /></div>
             <label className="field"><span>Başlangıç sermayesi</span><div className="input-wrap"><input value={capital} onChange={e => setCapital(e.target.value)} inputMode="numeric" aria-label="Başlangıç sermayesi" /><span className="suffix">{market === 'US' ? '$' : '₺'}</span></div></label>
-            <label className="field"><span>Komisyon</span><div className="input-wrap"><input value={commission} onChange={e => setCommission(e.target.value)} inputMode="decimal" aria-label="Komisyon oranı" /><span className="suffix">%</span></div></label>
+            <div className="field commission-field"><span>Komisyon</span><div className="commission-controls"><select aria-label="Komisyon hesaplama türü" value={commissionMode} onChange={event => setCommissionMode(event.target.value as 'percentage' | 'per_trade')}><option value="percentage">Yüzde</option><option value="per_trade">İşlem başı</option></select><div className="input-wrap"><input type="number" min="0" step="any" value={commission} onChange={event => setCommission(event.target.value)} inputMode="decimal" aria-label="Komisyon tutarı" /><span className="suffix">{commissionMode === 'percentage' ? '%' : market === 'US' ? '$' : '₺'}</span></div></div><small>{commissionMode === 'percentage' ? 'İşlem tutarının yüzdesi' : 'Her alış ve satış için sabit ücret'}</small></div>
           </div>
 
           <section className="strategy-selector" aria-labelledby="strategy-heading">
@@ -716,7 +719,7 @@ function App() {
             </div>
             <div className="research-capital form-grid">
               <label className="field">Başlangıç sermayesi<div className="input-wrap"><input value={capital} onChange={event => setCapital(event.target.value)} inputMode="numeric" /><span className="suffix">{market === 'US' ? '$' : '₺'}</span></div></label>
-              <label className="field">Komisyon<div className="input-wrap"><input value={commission} onChange={event => setCommission(event.target.value)} inputMode="decimal" /><span className="suffix">%</span></div></label>
+              <div className="field commission-field"><span>Komisyon</span><div className="commission-controls"><select aria-label="Komisyon hesaplama türü" value={commissionMode} onChange={event => setCommissionMode(event.target.value as 'percentage' | 'per_trade')}><option value="percentage">Yüzde</option><option value="per_trade">İşlem başı</option></select><div className="input-wrap"><input type="number" min="0" step="any" value={commission} onChange={event => setCommission(event.target.value)} inputMode="decimal" aria-label="Komisyon tutarı" /><span className="suffix">{commissionMode === 'percentage' ? '%' : market === 'US' ? '$' : '₺'}</span></div></div><small>{commissionMode === 'percentage' ? 'İşlem tutarının yüzdesi' : 'Her alış ve satış için sabit ücret'}</small></div>
               <div className="risk-control">
                 <label className="risk-toggle"><input type="checkbox" checked={riskEnabled} onChange={event => setRiskEnabled(event.target.checked)} /><span>Risk çıkışlarını uygula</span></label>
                 <p>Stop-loss ve take-profit tüm adaylarda aynı uygulanır.</p>

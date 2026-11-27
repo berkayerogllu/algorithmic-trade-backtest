@@ -61,7 +61,8 @@ class BacktestRequest(BaseModel):
     components: list[StrategyComponent] = Field(default_factory=list)
     combination_method: Literal["AND", "OR", "MAJORITY"] = "AND"
     initial_cash: float = Field(gt=0)
-    commission_rate: float = Field(ge=0, lt=1)
+    commission_rate: float = Field(default=0.0, ge=0, lt=1)
+    commission_per_trade: float = Field(default=0, ge=0)
     risk_enabled: bool = True
     stop_loss_pct: float = Field(default=5.0, gt=0, lt=100)
     take_profit_pct: float = Field(default=10.0, gt=0, lt=100)
@@ -89,7 +90,8 @@ class RandomResearchRequest(BaseModel):
     iterations: int = Field(default=30, ge=5, le=100)
     seed: Optional[int] = Field(default=None, ge=0, le=2**32 - 1)
     initial_cash: float = Field(default=100_000, gt=0)
-    commission_rate: float = Field(default=0.001, ge=0, lt=1)
+    commission_rate: float = Field(default=0.0, ge=0, lt=1)
+    commission_per_trade: float = Field(default=0, ge=0)
     risk_enabled: bool = True
     stop_loss_pct: float = Field(default=5.0, gt=0, lt=100)
     take_profit_pct: float = Field(default=10.0, gt=0, lt=100)
@@ -236,7 +238,12 @@ def run_backtest(request: BacktestRequest) -> dict:
             if request.risk_enabled
             else None
         )
-        results = BacktestEngine(request.initial_cash, request.commission_rate, risk).run(data, strategy)
+        results = BacktestEngine(
+            request.initial_cash,
+            request.commission_rate,
+            risk,
+            request.commission_per_trade,
+        ).run(data, strategy)
         periods_per_year = {"1d": 252, "1wk": 52, "1mo": 12}[request.interval]
         analyzer = PerformanceAnalyzer(periods_per_year=periods_per_year)
         metrics = analyzer.analyze(results)
@@ -248,6 +255,7 @@ def run_backtest(request: BacktestRequest) -> dict:
             request.initial_cash,
             request.commission_rate,
             counterfactual_risk if not request.risk_enabled else None,
+            request.commission_per_trade,
         ).run(data, strategy)
         counterfactual_metrics = analyzer.analyze(counterfactual)
     except (ValueError, KeyError) as exc:
@@ -288,6 +296,7 @@ def run_backtest(request: BacktestRequest) -> dict:
                 request.initial_cash,
                 request.commission_rate,
                 component_risk,
+                request.commission_per_trade,
             ).run(data, component)
             component_metrics = analyzer.analyze(component_results)
             indicator_effects.append({
@@ -421,7 +430,12 @@ def random_strategy_research(request: RandomResearchRequest) -> dict[str, Any]:
         risk_manager = RiskManager(**risk_options) if request.risk_enabled else None
 
         def evaluate(frame: pd.DataFrame, strategy: Any) -> dict[str, Any]:
-            result = BacktestEngine(request.initial_cash, request.commission_rate, risk_manager).run(frame, strategy)
+            result = BacktestEngine(
+                request.initial_cash,
+                request.commission_rate,
+                risk_manager,
+                request.commission_per_trade,
+            ).run(frame, strategy)
             metrics = analyzer.analyze(result)
             return {
                 **metrics,
