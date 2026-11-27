@@ -5,6 +5,7 @@ import {
 } from 'recharts';
 import { ArrowDown, Download, Save, Trash2 } from 'lucide-react';
 import { StockPicker } from './StockPicker';
+import { PythonArchitecturePanel, strategyPythonNote } from './PythonArchitecturePanel';
 import { Market } from './stockSymbols';
 
 type Point = { date: string; price: number; equity: number; benchmark: number; indicators?: Record<string, number | null> };
@@ -423,7 +424,7 @@ function App() {
           <h2>Backtest ayarları</h2>
           <p className="panel-intro">Bir hisse ve sinyal yöntemi seçin. Her stratejinin sonucu aynı dönem için al-tut ile karşılaştırılır.</p>
           <div className="form-grid configuration-grid">
-            <div className="field stock-field"><span>Hisse</span><StockPicker value={symbol} market={market} onChange={setSymbol} onMarketChange={setMarket} /></div>
+            <div className="field stock-field"><span>Hisse</span><StockPicker value={symbol} market={market} onChange={setSymbol} onMarketChange={setMarket} /><small className="field-note"><code>DataLoader</code> veriyi OHLCV tablosu olarak yükler ve doğrular.</small></div>
             <label className="field"><span>Başlangıç sermayesi</span><div className="input-wrap"><input value={capital} onChange={e => setCapital(e.target.value)} inputMode="numeric" aria-label="Başlangıç sermayesi" /><span className="suffix">{market === 'US' ? '$' : '₺'}</span></div></label>
             <label className="field"><span>Komisyon</span><div className="input-wrap"><input value={commission} onChange={e => setCommission(e.target.value)} inputMode="decimal" aria-label="Komisyon oranı" /><span className="suffix">%</span></div></label>
           </div>
@@ -437,7 +438,7 @@ function App() {
               </button>)}
             </div>
             <div className="strategy-detail" aria-live="polite">
-              <div className="strategy-rule"><span>Bu strateji ne yapar?</span><p>{strategyOptions.find(option => option.name === strategy)?.rule}{strategy === 'Buy & Hold' && riskEnabled ? ' Risk sınırları açıksa daha erken çıkabilir.' : ''}</p></div>
+              <div className="strategy-rule"><span>Bu strateji ne yapar?</span><p>{strategyOptions.find(option => option.name === strategy)?.rule}{strategy === 'Buy & Hold' && riskEnabled ? ' Risk sınırları açıksa daha erken çıkabilir.' : ''}</p><small className="python-inline-note">Python · {strategyPythonNote(strategy)}</small></div>
               {isIndicatorStrategy(strategy) && <div className="strategy-parameters">
                 <span className="parameter-heading">İndikatör ayarları</span>
                 <div className={`parameter-fields count-${strategyPresets[strategy].length}`}>
@@ -511,6 +512,7 @@ function App() {
                   <label className="field"><span>Kâr al</span><div className="input-wrap"><input type="number" min="0.1" max="99.9" step="0.1" required value={takeProfitPct} onChange={event => setTakeProfitPct(event.target.value)} aria-label="Kâr al yüzdesi" /><span className="suffix">%</span></div></label>
                 </div>
                 <p>Her pozisyonun giriş fiyatına göre kapanışta uygulanır.</p>
+                <small className="python-inline-note">Python · <code>RiskManager</code> pozisyon büyüklüğünü ve çıkış koşullarını yönetir.</small>
               </> : <p>Pozisyonlar yalnızca strateji sinyaliyle kapanır.</p>}
             </div>
             <button className="run-button" disabled={busy || !symbol.trim() || (strategy === 'Combined' && selectedComponents.length < 2)}>
@@ -523,12 +525,18 @@ function App() {
         <div className="results-heading"><div><div className="section-title"><h2>Performans özeti</h2><span className="period-badge">{result?.period}</span></div><p>{result ? `${result.symbol} · ${strategyDisplayName(result.strategy)} · ${chartData.length.toLocaleString('tr-TR')} ${intervalLabels[result.interval ?? '1d'].toLocaleLowerCase('tr-TR')} bar` : 'Henüz bir simülasyon çalıştırılmadı.'}</p>{result && <p className="result-parameters">{strategyParameterSummary(result)}{result.risk_enabled === undefined ? '' : result.risk_enabled ? ` · Risk çıkışları açık · SL %${result.stop_loss_pct ?? 5} / TP %${result.take_profit_pct ?? 10}` : ' · Risk çıkışları kapalı'}</p>}</div><div className="result-actions">{result && <button className="export-button" disabled={Boolean(activeHistoryId) || historyBusy || historyLoading || !databaseOnline} onClick={saveCurrentBacktest}><Save size={15} />{activeHistoryId ? 'Geçmişte kayıtlı' : historyBusy ? 'İşleniyor…' : historyLoading ? 'Kayıtlar yükleniyor…' : 'Geçmişe kaydet'}</button>}<button className="export-button" disabled={!result} onClick={() => result && downloadCsv(result)}><Download size={15} /> CSV indir</button></div></div>
         {historyError && <div className="error-message" role="alert">Kayıt geçmişi: {historyError}</div>}
 
-        <section className="metric-grid" aria-label="Performans metrikleri">
-          <MetricCard label="Toplam getiri" value={metrics ? formatPercent(metrics.total_return) : '—'} detail={metrics ? `${formatMoney(chartData[chartData.length - 1].equity, result?.market)} portföy değeri` : 'Başlangıçtan bugüne'} trend={metrics ? metrics.total_return >= 0 : null} />
-          <MetricCard label="Sharpe oranı" value={metrics ? metrics.sharpe_ratio.toFixed(2) : '—'} detail={`Yıllıklandırılmış · ${intervalsPerYear[result?.interval ?? '1d']} bar`} />
-          <MetricCard label="Azami düşüş" value={metrics ? formatPercent(metrics.max_drawdown) : '—'} detail="Zirveden en düşük noktaya" trend={metrics ? false : null} />
-          <MetricCard label="Kazanma oranı" value={metrics ? formatPercent(metrics.win_rate) : '—'} detail={metrics ? `${metrics.closed_trades} kapanan işlem` : 'Kapanan işlemlere göre'} />
-        </section>
+        {result ? <>
+          <section className="metric-grid" aria-label="Performans metrikleri">
+            <MetricCard label="Toplam getiri" value={formatPercent(metrics!.total_return)} detail={`${formatMoney(chartData[chartData.length - 1].equity, result.market)} portföy değeri`} trend={metrics!.total_return >= 0} />
+            <MetricCard label="Sharpe oranı" value={metrics!.sharpe_ratio.toFixed(2)} detail={`Yıllıklandırılmış · ${intervalsPerYear[result.interval ?? '1d']} bar`} />
+            <MetricCard label="Azami düşüş" value={formatPercent(metrics!.max_drawdown)} detail="Zirveden en düşük noktaya" trend={false} />
+            <MetricCard label="Kazanma oranı" value={formatPercent(metrics!.win_rate)} detail={`${metrics!.closed_trades} kapanan işlem`} />
+          </section>
+          <p className="python-inline-note performance-python-note">Python · <code>PerformanceAnalyzer</code> portföy eğrisinden getiri, Sharpe, düşüş ve işlem oranlarını hesaplar.</p>
+        </> : <section className="backtest-empty-state" aria-live="polite">
+          <div><h2>Backtest sonucu burada oluşacak</h2><p>Hisseyi ve stratejiyi seçin, tarih aralığını belirleyin ve simülasyonu çalıştırın.</p></div>
+          <div className="empty-state-path"><span>Hisse + dönem</span><span>Strateji sinyali</span><span>Portföy sonucu</span></div>
+        </section>}
 
         {result && benchmarkReturn !== null && <section className="comparison-strip" aria-label="Al-tut ile dönem karşılaştırması">
           <div className="comparison-intro"><h3>Al-tut ile karşılaştırma</h3><p>Aynı hisse ve tarih aralığı. Baz çizgisi komisyon ve risk çıkışlarını içermez.</p></div>
@@ -611,7 +619,7 @@ function App() {
           </article>}
         </section>}
 
-        <section className="chart-card">
+        {result ? <section className="chart-card">
           <div className="chart-head">
             <div>
               <h2>{showIndicatorComparison ? 'Fiyat ve indikatör karşılaştırması' : 'Portföy performansı'}</h2>
@@ -651,10 +659,10 @@ function App() {
             </ResponsiveContainer> : <p className="empty-chart">Simülasyonu çalıştırınca strateji ve al-tut sonuçları burada görünür.</p>}
           </div>
           <div className="chart-foot"><span><span className="live-dot" /> {intervalLabels[result?.interval ?? '1d']} kapanış verisi</span><span>{result?.source ?? 'Kaynak: Yahoo Finance'}</span></div>
-        </section>
+        </section> : null}
 
-        <section className="lower-grid"><div className="data-card"><div className="card-heading"><div><h2>İşlem günlüğü</h2><p>{result ? `${closedTrades.length} kapanmış işlem` : 'Gerçekleşen alım ve satımlar'}</p></div></div><div className="table-scroll" id="trade-table"><table><thead><tr><th>Giriş</th><th>Çıkış</th><th>Kâr / zarar</th><th>Çıkış nedeni</th></tr></thead><tbody>{closedTrades.length ? closedTrades.slice().reverse().map((trade, i) => <tr key={`${trade.entry_date}-${i}`}><td>{trade.entry_date} · {formatMoney(trade.entry_price, result?.market)}</td><td>{trade.exit_date} · {formatMoney(trade.exit_price, result?.market)}</td><td className={trade.pnl >= 0 ? 'pnl-positive' : 'pnl-negative'}>{formatMoney(trade.pnl, result?.market)}</td><td><span className={`trade-pill ${trade.exit_reason === 'signal' ? 'buy' : 'sell'}`}>{trade.exit_reason === 'signal' ? 'Sinyal' : trade.exit_reason === 'stop_loss' ? 'Stop-loss' : 'Take-profit'}</span></td></tr>) : <tr><td colSpan={4} className="empty-row">{result ? 'Bu dönemde kapanmış işlem yok.' : 'Backtest sonrası işlem kayıtları listelenir.'}</td></tr>}</tbody></table></div></div>
-        </section>
+        {result && <section className="lower-grid"><div className="data-card"><div className="card-heading"><div><h2>İşlem günlüğü</h2><p>{closedTrades.length} kapanmış işlem</p></div></div><div className="table-scroll" id="trade-table"><table><thead><tr><th>Giriş</th><th>Çıkış</th><th>Kâr / zarar</th><th>Çıkış nedeni</th></tr></thead><tbody>{closedTrades.length ? closedTrades.slice().reverse().map((trade, i) => <tr key={`${trade.entry_date}-${i}`}><td>{trade.entry_date} · {formatMoney(trade.entry_price, result.market)}</td><td>{trade.exit_date} · {formatMoney(trade.exit_price, result.market)}</td><td className={trade.pnl >= 0 ? 'pnl-positive' : 'pnl-negative'}>{formatMoney(trade.pnl, result.market)}</td><td><span className={`trade-pill ${trade.exit_reason === 'signal' ? 'buy' : 'sell'}`}>{trade.exit_reason === 'signal' ? 'Sinyal' : trade.exit_reason === 'stop_loss' ? 'Stop-loss' : 'Take-profit'}</span></td></tr>) : <tr><td colSpan={4} className="empty-row">Bu dönemde kapanmış işlem yok.</td></tr>}</tbody></table></div></div>
+        </section>}
         </>}
         {page === 'history' && <>
           <header className="page-heading history-page-heading">
@@ -795,6 +803,7 @@ function App() {
             <p className="forecast-note">Tahmin geçmiş örüntülerden üretilen istatistiksel bir tahmindir. Hata aralığı geçmiş doğrulama hatalarını özetler, gelecekteki sonucu garanti etmez.</p>
           </> : <p className="forecast-empty">Bir BIST hisse kodu ve tahmin ufku seçip geçmiş veriyi çalıştırın.</p>}
         </>}
+        <PythonArchitecturePanel view={page === 'simulations' || mode === 'random' ? 'research' : page === 'history' ? 'history' : mode} strategy={strategy} riskEnabled={riskEnabled} />
         <footer className="app-footer"><span>piyasa.lab · Akademik simülasyon aracı</span><span>Gerçek emir gönderilmez</span></footer>
     </main>
   </div>;
